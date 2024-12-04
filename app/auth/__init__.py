@@ -1,5 +1,1 @@
-from flask import Blueprint
-
-auth_bp = Blueprint('auth', __name__)
-
-from . import auth
+from .decorators import firebase_auth_required

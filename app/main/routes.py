@@ -1,7 +1,7 @@
 from flask import g, jsonify, request
 from marshmallow import ValidationError
 from app.extensions import db
-from app.auth.auth import firebase_auth_required
+from app.auth import firebase_auth_required
 from app.models import (
     User,
     Post, 
