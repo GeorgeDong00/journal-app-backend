@@ -46,7 +46,7 @@ class PostSchema(ma.SQLAlchemySchema):
         load_instance = True
 
     id = ma.auto_field()
-    user_id = ma.auto_field(required=True)
+    user_id = ma.auto_field(dump_only=True)
     content = ma.auto_field(required=True, validate=validate.Length(min=1))
     sadness_amt = ma.auto_field(validate=validate.Range(min=0.0, max=1.0))
     fear_amt = ma.auto_field(validate=validate.Range(min=0.0, max=1.0))
@@ -81,7 +81,7 @@ class WeeklyAdviceSchema(ma.SQLAlchemySchema):
         load_instance = True
 
     id = ma.auto_field()
-    user_id = ma.auto_field(required=True)
+    user_id = ma.auto_field(dump_only=True)
     content = ma.auto_field(required=True, validate=validate.Length(min=1))
     created_at = ma.auto_field()
 
