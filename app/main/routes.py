@@ -1,16 +1,13 @@
 from flask import g, jsonify, request
 from marshmallow import ValidationError
-
-from app import app, db
-from app.auth import firebase_auth_required
+from app.extensions import db
+from app.auth.routes import firebase_auth_required
 from app.models import (
-    Post,
-    PostSchema,
     User,
-    UserSchema,
-    WeeklyAdvice,
-    WeeklyAdviceSchema,
+    Post, 
+    PostSchema
 )
+from . import main_bp
 
 
 def get_or_create_user(firebase_uid):
@@ -26,7 +23,7 @@ def get_or_create_user(firebase_uid):
     return user
 
 
-@app.route("/api")
+@main_bp.route("/api")
 @firebase_auth_required
 def index():
     """
@@ -35,14 +32,14 @@ def index():
     return jsonify({"message": "Authentication successful!"}), 200
 
 
-@app.route("/api/posts", methods=["POST"])
-# @firebase_auth_required
+@main_bp.route("/api/posts", methods=["POST"])
+@firebase_auth_required
 def create_post():
     """
     Endpoint to create a new post for the authenticated user.
     """
-    # firebase_uid = g.user['uid']
-    firebase_uid = "test_user"
+    firebase_uid = g.user['uid']
+    # firebase_uid = "test_user"
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
 
@@ -61,12 +58,7 @@ def create_post():
         db.session.commit()
 
         serialized_new_post = post_schema.dump(new_post)
-        return (
-            jsonify(
-                {"message": "Post created successfully.", "post": serialized_new_post}
-            ),
-            201,
-        )
+        return jsonify({"message": "Post created successfully.", "post": serialized_new_post}),201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to create post.", "message": str(e)}), 500
