@@ -1,1 +1,2 @@
 FLASK_APP=journal.py
+FLASK_DEBUG=1

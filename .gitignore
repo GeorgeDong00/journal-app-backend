@@ -1,6 +1,9 @@
 # Firebase Credentials
 app/serviceAccountKey.json
 
+# Database
+*.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
