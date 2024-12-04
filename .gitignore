@@ -4,6 +4,9 @@ app/serviceAccountKey.json
 # Database
 *.db
 
+# Local Development
+migrations
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

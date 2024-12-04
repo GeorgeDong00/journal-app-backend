@@ -15,7 +15,7 @@ firebase_admin.initialize_app(cred)
 
 # Initialize SQLAlchemy and Migrate
 db = SQLAlchemy(app)
-# migrate = Migrate(app, db)
+migrate = Migrate(app, db)
 
 # Initialize Marshmallow for serialization and deserialization
 ma = Marshmallow(app)

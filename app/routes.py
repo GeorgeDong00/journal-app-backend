@@ -25,7 +25,7 @@ def index():
     return jsonify({'message': 'Authentication successful!'}), 200
 
 @app.route('/api/posts', methods=['POST'])
-@firebase_auth_required
+# @firebase_auth_required
 def create_post():
     """
     Endpoint to create a new post for the authenticated user.
