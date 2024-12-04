@@ -1,24 +1,24 @@
 import firebase_admin
 from firebase_admin import credentials
 from flask import Flask
-from flask_marshmallow import Marshmallow
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
+from .extensions import db, migrate, ma
+from .config import Config
 
-from config import Config
+def create_app(config_class=Config):
+    app = Flask(__name__)
+    app.config.from_object(config_class)
 
-app = Flask(__name__)
-app.config.from_object(Config)
+    # Initialize Firebase Admin SDK to verify token
+    cred = credentials.Certificate("app/serviceAccountKey.json")
+    firebase_admin.initialize_app(cred)
 
-# Initialize Firebase Admin SDK to verify token
-cred = credentials.Certificate("app/serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
+    # Initialize extensions
+    db.init_app(app)
+    migrate.init_app(app, db)
+    ma.init_app(app)
 
-# Initialize SQLAlchemy and Migrate
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+    from app.main import main_bp
 
-# Initialize Marshmallow for serialization and deserialization
-ma = Marshmallow(app)
+    app.register_blueprint(main_bp)
 
-from app import models, routes
+    return app
