@@ -1,7 +1,8 @@
 from app import app, db
 from app.auth import firebase_auth_required
 from flask import jsonify, g, request
-from app.models import User, Post, WeeklyAdvice
+from app.models import User, UserSchema, Post, PostSchema, WeeklyAdvice, WeeklyAdviceSchema
+from marshmallow import ValidationError
 
 def get_or_create_user(firebase_uid):
     """
@@ -27,44 +28,37 @@ def index():
 @firebase_auth_required
 def create_post():
     """
-    Endpoint to retrieve user's posts.
+    Endpoint to create a new post for the authenticated user.
     """
-    firebase_uid = g.user['uid']
+    # firebase_uid = g.user['uid']
+    firebase_uid = "test_user"
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
 
-    content = data.get('content')
-    if not content:
-        return jsonify({'error': 'Content is required.'}), 400
-    
-    sadness_amt = data.get('sadness_amt', 0.0)
-    fear_amt = data.get('fear_amt', 0.0)
-    joy_amt = data.get('joy_amt', 0.0)
-    anger_amt = data.get('anger_amt', 0.0)
+    # Validate request data
+    post_schema = PostSchema()
+    try:
+        post_data = post_schema.load(data)
+    except ValidationError as ve:
+        return jsonify({'error': 'Validation failed.', 'messages': ve.messages}), 400
 
     new_post = Post(
         user_id=user.id,
-        content=content,
-        sadness_amt=sadness_amt,
-        fear_amt=fear_amt,
-        joy_amt=joy_amt,
-        anger_amt=anger_amt
+        content=post_data.get('content'),
+        sadness_amt=data.get('sadness_amt', 0.0),
+        fear_amt=data.get('fear_amt', 0.0),
+        joy_amt=data.get('joy_amt', 0.0),
+        anger_amt=data.get('anger_amt', 0.0)
     )
 
     try:
         db.session.add(new_post)
         db.session.commit()
+
+        serialized_new_post = post_schema.dump(new_post)
         return jsonify({
             'message': 'Post created successfully.',
-            'post': {
-                'id': new_post.id,
-                'content': new_post.content,
-                'sadness_amt': new_post.sadness_amt,
-                'fear_amt': new_post.fear_amt,
-                'joy_amt': new_post.joy_amt,
-                'anger_amt': new_post.anger_amt,
-                'created_at': new_post.created_at.isoformat()
-            }
+            'post': serialized_new_post
         }), 201
     except Exception as e:
         db.session.rollback()
