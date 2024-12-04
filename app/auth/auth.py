@@ -1,7 +1,7 @@
-from functools import wraps
 from flask import request, jsonify, g
-import firebase_admin
+from functools import wraps
 from firebase_admin import auth
+from . import auth_bp
 
 
 def firebase_auth_required(f):
