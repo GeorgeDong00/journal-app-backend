@@ -42,14 +42,8 @@ def create_post():
     except ValidationError as ve:
         return jsonify({'error': 'Validation failed.', 'messages': ve.messages}), 400
 
-    new_post = Post(
-        user_id=user.id,
-        content=post_data.get('content'),
-        sadness_amt=data.get('sadness_amt', 0.0),
-        fear_amt=data.get('fear_amt', 0.0),
-        joy_amt=data.get('joy_amt', 0.0),
-        anger_amt=data.get('anger_amt', 0.0)
-    )
+    new_post = post_data
+    new_post.user_id = user.id
 
     try:
         db.session.add(new_post)
