@@ -1,8 +1,17 @@
+from flask import g, jsonify, request
+from marshmallow import ValidationError
+
 from app import app, db
 from app.auth import firebase_auth_required
-from flask import jsonify, g, request
-from app.models import User, UserSchema, Post, PostSchema, WeeklyAdvice, WeeklyAdviceSchema
-from marshmallow import ValidationError
+from app.models import (
+    Post,
+    PostSchema,
+    User,
+    UserSchema,
+    WeeklyAdvice,
+    WeeklyAdviceSchema,
+)
+
 
 def get_or_create_user(firebase_uid):
     """
@@ -16,15 +25,17 @@ def get_or_create_user(firebase_uid):
         db.session.commit()
     return user
 
-@app.route('/api')
+
+@app.route("/api")
 @firebase_auth_required
 def index():
     """
     Endpoint to test authentication.
     """
-    return jsonify({'message': 'Authentication successful!'}), 200
+    return jsonify({"message": "Authentication successful!"}), 200
 
-@app.route('/api/posts', methods=['POST'])
+
+@app.route("/api/posts", methods=["POST"])
 # @firebase_auth_required
 def create_post():
     """
@@ -40,7 +51,7 @@ def create_post():
     try:
         post_data = post_schema.load(data)
     except ValidationError as ve:
-        return jsonify({'error': 'Validation failed.', 'messages': ve.messages}), 400
+        return jsonify({"error": "Validation failed.", "messages": ve.messages}), 400
 
     new_post = post_data
     new_post.user_id = user.id
@@ -50,10 +61,12 @@ def create_post():
         db.session.commit()
 
         serialized_new_post = post_schema.dump(new_post)
-        return jsonify({
-            'message': 'Post created successfully.',
-            'post': serialized_new_post
-        }), 201
+        return (
+            jsonify(
+                {"message": "Post created successfully.", "post": serialized_new_post}
+            ),
+            201,
+        )
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Failed to create post.', 'message': str(e)}), 500
+        return jsonify({"error": "Failed to create post.", "message": str(e)}), 500
