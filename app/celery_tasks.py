@@ -1,6 +1,6 @@
 from app.tasks_logic import generate_weekly_advice_for_user
 from app.models import User
-from app.extensions import db
+
 
 def register_tasks(celery):
     """
@@ -9,8 +9,8 @@ def register_tasks(celery):
     Parameters:
         celery (Celery): Instance to which tasks will be registered to.
     """
-    
-    @celery.task(name='generate_all_users_weekly_advice')
+
+    @celery.task(name="generate_all_users_weekly_advice")
     def generate_all_users_weekly_advice():
         """
         Defines a Celery task that generates personalized weekly advice for each unqiue user.
@@ -22,3 +22,8 @@ def register_tasks(celery):
         for user in users:
             generate_weekly_advice_for_user(user)
         return "Completed Celery Task: Generated all users' weekly advice."
+
+    @celery.task(name="test_task")
+    def test_task():
+        print("Test task is running every 15 seconds!")
+        return "Test task completed."

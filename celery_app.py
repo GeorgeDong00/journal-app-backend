@@ -1,5 +1,4 @@
 from celery import Celery
-from celery.schedules import crontab
 
 
 def make_celery(app):
@@ -34,13 +33,5 @@ def make_celery(app):
 
     celery.Task = ContextTask
     celery.conf.timezone = "UTC"
-
-    # Setup a weekly schedule
-    celery.conf.beat_schedule = {
-        "generate-weekly-advice-every-sunday-midnight": {
-            "task": "generate_all_users_weekly_advice",
-            "schedule": crontab(day_of_week="sunday", hour=0, minute=0),
-        }
-    }
 
     return celery

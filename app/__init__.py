@@ -4,6 +4,8 @@ from flask import Flask
 from .extensions import db, migrate, ma
 from .config import Config
 from celery_app import make_celery
+from app.celery_tasks import register_tasks
+
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -19,13 +21,13 @@ def create_app(config_class=Config):
     ma.init_app(app)
 
     from app.main import main_bp
+
     app.register_blueprint(main_bp)
 
-    #Initialize Celery for background task of generating weekly advice
+    # Initialize Celery for background task of generating weekly advice
     celery = make_celery(app)
     app.celery = celery
     # Import and register tasks AFTER celery is created
-    from app.celery_tasks import register_tasks
     register_tasks(celery)
 
     return app
