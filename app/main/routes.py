@@ -185,7 +185,6 @@ def delete_users_pfp():
     """
 
     firebase_uid = g.user['uid']
-    #firebase_uid = "test_user"
 
     user = get_or_create_user(firebase_uid)
 
@@ -212,7 +211,6 @@ def upload_users_pfp():
 
     
     firebase_uid = g.user['uid']
-   # firebase_uid = "test_user"
 
     user = get_or_create_user(firebase_uid)
 
