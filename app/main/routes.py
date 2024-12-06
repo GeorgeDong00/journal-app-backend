@@ -98,7 +98,7 @@ def create_post():
         serialized_new_post = post_schema.dump(new_post)
         return (
             jsonify(
-                {"message": "Post created successfully.", "post": serialized_new_post}
+                {"message": "Post created successfully.", "post": serialized_new_post, "formatting" : []}
             ),
             201,
         )
