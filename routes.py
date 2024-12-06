@@ -1,7 +1,11 @@
 from flask import g, jsonify, request
 from marshmallow import ValidationError
 from app.extensions import db
+import app.models.post as post
+import app.models.weekly_advice as weekly_advice
+import datetime
 from app.auth import firebase_auth_required
+
 from app.models import (
     User,
     Post, 
@@ -10,6 +14,21 @@ from app.models import (
 from . import main_bp
 #from transformers import pipeline
 #emotion = pipeline('sentiment-analysis', model='arpanghoshal/EmoRoBERTa')
+
+
+def serializePost(post):
+    post_data = {}
+    post_data["id"] = post.id
+    post_data["user_id"] = post.user_id
+    post_data["content"] = post.content
+    post_data["dominant_emotion"] = post.dominant_emotion
+    post_data["dominant_emotion_value"] = post.dominant_emotion_value
+    post_data["created_at"] = post.created_at
+
+    return post_data
+
+def returnLastSunday(date):
+    return date - datetime.timedelta(days=date.weekday()+1)
 
 def get_or_create_user(firebase_uid):
     """
@@ -43,12 +62,10 @@ def create_post():
     firebase_uid = "test_user"
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
-    #emotion_label = emotion(data['content'])
-    data['dominant_emotion'] = "blah"
-    data['dominant_emotion_value'] = .5
-    print(data)
-    #dominant_emot_amt = ma.auto_field(validate=validate.Range(min=0.0, max=1.0))
-    #dominant_emot_name
+    emotion_label = emotion(data['content'])
+    data['dominant_emotion'] = emotion_label[0]['label']
+    data['dominant_emotion_value'] = emotion_label[0]['score']
+  
 
     # Validate request data
     post_schema = PostSchema()
@@ -68,3 +85,34 @@ def create_post():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to create post.", "message": str(e)}), 500
+
+
+  
+
+
+
+@main_bp.route("/api/posts/<int:users_id>/", methods=["GET"])
+#@firebase_auth_required
+def get_users_posts(users_id):
+    """
+    Endpoint to create a new post for the authenticated user.
+    """
+    #firebase_uid = g.user['uid']
+    firebase_uid = "test_user"
+    user = get_or_create_user(firebase_uid)
+
+    user = db.session.query(User).filter_by(id = users_id).first()
+
+    posts = user.posts
+
+    #print(returnLastSunday(datetime.datetime(2023, 12, 30, 12, 0)))
+
+    #userSummaries = db.session.query(weekly_advice.WeeklyAdvice).filter_by(user_id = users_id)
+   # print(userSummaries)    
+    #result = db.session.execute(userSummaries)
+
+    all_posts = []
+    for post in posts:
+        all_posts.append(serializePost(post))
+
+    return jsonify({"message": "Post created successfully.", "posts": all_posts}),200
