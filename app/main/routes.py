@@ -1,4 +1,4 @@
-from flask import g, jsonify, request
+from flask import g, jsonify, request, current_app
 from marshmallow import ValidationError
 from app.extensions import db
 from app.auth import firebase_auth_required
@@ -62,3 +62,13 @@ def create_post():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to create post.", "message": str(e)}), 500
+
+@main_bp.route("/api/test/generate_weekly_advice", methods=["POST"])
+def trigger_weekly_advice():
+    """
+    Test endpoint to trigger the Celery background task to generate weekly advice for every user through OpenAI API. 
+    """
+    task = current_app.celery.send_task('generate_all_users_weekly_advice')
+    return jsonify({
+        "message": "Dispatched Celery Task: Generate all users' weekly advice.", 
+        "task_id": task.id}), 202
