@@ -12,8 +12,13 @@ from app.models import (
     PostSchema
 )
 from . import main_bp
-#from transformers import pipeline
-#emotion = pipeline('sentiment-analysis', model='arpanghoshal/EmoRoBERTa')
+from transformers import pipeline 
+
+emotion_analyzer = pipeline(
+    "text-classification", 
+    model="bhadresh-savani/bert-base-uncased-emotion", 
+    return_all_scores=True  # Return scores for all emotions
+)
 
 
 def serializePost(post):
@@ -62,9 +67,10 @@ def create_post():
     firebase_uid = "test_user"
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
-    emotion_label = emotion(data['content'])
-    data['dominant_emotion'] = emotion_label[0]['label']
-    data['dominant_emotion_value'] = emotion_label[0]['score']
+    input = emotion_analyzer(data['content'])
+    print(input)
+    #data['dominant_emotion'] = emotion_label[0]['label']
+    #data['dominant_emotion_value'] = emotion_label[0]['score']
   
 
     # Validate request data
@@ -91,17 +97,21 @@ def create_post():
 
 
 
-@main_bp.route("/api/posts/<int:users_id>/", methods=["GET"])
-#@firebase_auth_required
-def get_users_posts(users_id):
+@main_bp.route("/api/posts/", methods=["GET"])
+@firebase_auth_required
+def get_users_posts():
     """
     Endpoint to create a new post for the authenticated user.
     """
-    #firebase_uid = g.user['uid']
-    firebase_uid = "test_user"
-    user = get_or_create_user(firebase_uid)
+    firebase_uid1 = g.user['uid']
+    print(g.user['email'])
+    #firebase_uid = "test_user"
+    #user = get_or_create_user(firebase_uid)
+    user = db.session.query(User).filter_by(firebase_uid = firebase_uid1).first()
 
-    user = db.session.query(User).filter_by(id = users_id).first()
+    res = db.session.query(User).all()
+    for amo in res:
+        print(amo.firebase_uid)
 
     posts = user.posts
 
