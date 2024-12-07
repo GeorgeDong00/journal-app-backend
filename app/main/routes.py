@@ -6,6 +6,8 @@ import app.models.weekly_advice as Weekly_Advice
 import datetime
 from app.auth import firebase_auth_required
 import boto3
+import io
+import json
 
 s3 = boto3.client('s3')
 
@@ -74,6 +76,11 @@ def create_post():
     data['sadness_value'] = emotions[0][5]['score']
     data['surprise_value'] = emotions[0][6]['score']
 
+    # This is awful
+    content = data['formatting']
+
+    data.pop('formatting')
+
     # Validate request data
     post_schema = PostSchema()
     try:
@@ -86,10 +93,16 @@ def create_post():
     try:
         db.session.add(new_post)
         db.session.commit()
-
         serialized_new_post = post_schema.dump(new_post)
+
         #Blank formatting array for front end
-        return jsonify({"message": "Post created successfully.", "post": serialized_new_post, "formatting" : []}),201
+        json_string = json.dumps(content)
+        json_file_like = io.BytesIO(json_string.encode('utf-8'))
+        s3.upload_fileobj(json_file_like, "notetakingprofilepicturesbucket", "formatting" + str(new_post.id) + ".json", ExtraArgs = {"ACL" : "public-read"})
+        serialized_new_post['formatting'] = content
+
+        return jsonify({"message": "Post created successfully.", "post": serialized_new_post}),201
+    
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to create post.", "message": str(e)}), 500
@@ -147,6 +160,13 @@ def get_users_posts():
 
     for post in posts:
         post = post_schema.dump(post)
+        response = s3.get_object(Bucket="notetakingprofilepicturesbucket", Key="formatting" + str(post['id']) + ".json")
+        content = response['Body'].read().decode('utf-8')
+        
+        # Parse JSON content into a Python dictionary
+        data = json.loads(content)
+        post['formatting'] = data
+
         all_posts.append(post)
     
     return jsonify({"message": "All posts have been gathered.", "posts": all_posts}),200
@@ -194,7 +214,6 @@ def get_users_pfp():
 @main_bp.route("/api/pfp/", methods=["DELETE"])
 @firebase_auth_required
 def delete_users_pfp():
-
     """
     Endpoint to delete a user's profile picture.
     """
@@ -217,6 +236,7 @@ def upload_users_pfp():
     """
     Endpoint to upload a user's pfp to S3 and then return a link to the image. 
     """
+
     uploaded_file = request.files
     file_data = uploaded_file.to_dict().get('',None) 
 
