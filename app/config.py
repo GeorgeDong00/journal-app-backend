@@ -18,9 +18,9 @@ class Config:
     RESULT_BACKEND = os.environ.get("RESULT_BACKEND") or "redis://localhost:6379/0"
 
     CELERY_BEAT_SCHEDULE = {
-        "run-test-task-every-15-seconds": {
-            "task": "test_task",
-            "schedule": timedelta(seconds=15),
+        "weekly-advice-generation": {
+            "task": "generate_all_users_weekly_advice",
+            "schedule": timedelta(seconds=60),
             "args": (),
         },
     }
