@@ -1,5 +1,8 @@
+from celery.utils.log import get_task_logger
 from app.tasks_logic import generate_weekly_advice_for_user
 from app.models import User
+
+logger = get_task_logger(__name__)
 
 
 def register_tasks(celery):

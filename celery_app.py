@@ -15,6 +15,7 @@ def make_celery(app):
     celery = Celery(app.import_name)
     celery.conf.broker_url = app.config["BROKER_URL"]
     celery.conf.result_backend = app.config["RESULT_BACKEND"]
+    celery.conf.beat_schedule = app.config["CELERY_BEAT_SCHEDULE"]
 
     TaskBase = celery.Task
 
