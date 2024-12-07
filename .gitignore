@@ -7,6 +7,9 @@ app/serviceAccountKey.json
 # Local Development
 migrations
 
+# Redis Snapshot
+dump.rdb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
