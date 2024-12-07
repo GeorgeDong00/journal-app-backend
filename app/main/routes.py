@@ -7,7 +7,6 @@ import datetime
 from app.auth import firebase_auth_required
 import boto3
 
-
 s3 = boto3.client('s3')
 
 from app.models import (
@@ -142,12 +141,10 @@ def get_users_posts():
 
     firebase_uid = g.user['uid']
     user = get_or_create_user(firebase_uid)
-
     posts = user.posts
-
     post_schema = PostSchema()
-
     all_posts = []
+
     for post in posts:
         post = post_schema.dump(post)
         all_posts.append(post)
@@ -164,11 +161,8 @@ def get_users_weekly_advice():
 
     firebase_uid = g.user['uid']
     user = get_or_create_user(firebase_uid)
-    
     weekly_advices = user.weekly_advices
-
     weekly_advice_schema = Weekly_Advice.WeeklyAdviceSchema()
-
     lastSunday = returnLastSunday(datetime.date.today())
 
     for weekly_advice in weekly_advices:
@@ -187,7 +181,6 @@ def get_users_pfp():
     """
 
     firebase_uid = g.user['uid']
-
     user = get_or_create_user(firebase_uid)
 
     try:
@@ -207,7 +200,6 @@ def delete_users_pfp():
     """
 
     firebase_uid = g.user['uid']
-
     user = get_or_create_user(firebase_uid)
 
     try:
@@ -226,13 +218,12 @@ def upload_users_pfp():
     Endpoint to upload a user's pfp to S3 and then return a link to the image. 
     """
     uploaded_file = request.files
-    
     file_data = uploaded_file.to_dict().get('',None) 
+
     if(file_data is None):
         return jsonify({"message": "Could not retrieve profile picture."}),404
 
     firebase_uid = g.user['uid']
-
     user = get_or_create_user(firebase_uid)
 
     s3.upload_fileobj(file_data, "notetakingprofilepicturesbucket", f'{user.id}.png', ExtraArgs = {"ACL" : "public-read"})
