@@ -2,7 +2,7 @@ from flask import g, jsonify, request
 from marshmallow import ValidationError
 from app.extensions import db
 import app.models.post as post
-import app.models.weekly_advice as weekly_advice
+import app.models.weekly_advice as Weekly_Advice
 import datetime
 from app.auth import firebase_auth_required
 import boto3
@@ -32,7 +32,6 @@ def returnLastSunday(date):
     @param date - datetime object
     
     '''
-
     return date - datetime.timedelta(days=date.weekday()+1)
 
 def get_or_create_user(firebase_uid):
@@ -138,12 +137,11 @@ def modify_post(post_id):
 @firebase_auth_required
 def get_users_posts():
     """
-    Endpoint to create a new post for the authenticated user.
+    Endpoint to get a user's posts for the authenticated user.
     """
 
     firebase_uid = g.user['uid']
     user = get_or_create_user(firebase_uid)
-
 
     posts = user.posts
 
@@ -155,6 +153,30 @@ def get_users_posts():
         all_posts.append(post)
     
     return jsonify({"message": "All posts have been gathered.", "posts": all_posts}),200
+
+
+@main_bp.route("/api/weekly_advice/", methods=["GET"])
+@firebase_auth_required
+def get_users_weekly_advice():
+    """
+    Endpoint to create a new post for the authenticated user.
+    """
+
+    firebase_uid = g.user['uid']
+    user = get_or_create_user(firebase_uid)
+    
+    weekly_advices = user.weekly_advices
+
+    weekly_advice_schema = Weekly_Advice.WeeklyAdviceSchema()
+
+    lastSunday = returnLastSunday(datetime.date.today())
+
+    for weekly_advice in weekly_advices:
+        if(weekly_advice.of_week.date() == lastSunday):
+            serialized_weekly_advice = weekly_advice_schema.dump(weekly_advice)
+            return jsonify({"message": "Weekly Advice of week " + str(lastSunday) + " has been retrieved", 'weekly_advice' : serialized_weekly_advice}),200
+
+    return jsonify({"message": "Unable to find a weekly advice for " + str(lastSunday)}),404
 
 
 @main_bp.route("/api/pfp/", methods=["GET"])
@@ -209,7 +231,6 @@ def upload_users_pfp():
     if(file_data is None):
         return jsonify({"message": "Could not retrieve profile picture."}),404
 
-    
     firebase_uid = g.user['uid']
 
     user = get_or_create_user(firebase_uid)
@@ -223,6 +244,3 @@ def upload_users_pfp():
         return jsonify({"message": "Could not retrieve profile picture."}),404
 
     return jsonify({"message": "Created profile picture.", "link" : "https://notetakingprofilepicturesbucket.s3.us-east-2.amazonaws.com/" + str(user.id) + '.png'}),200
-
-    
-
