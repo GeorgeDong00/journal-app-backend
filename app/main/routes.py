@@ -277,5 +277,3 @@ def upload_users_pfp():
         return jsonify({"message": "Could not retrieve profile picture."}),404
 
     return jsonify({"message": "Created profile picture.", "link" : "https://notetakingprofilepicturesbucket.s3.us-east-2.amazonaws.com/" + str(user.id) + '.png'}),200
-routes.py
-9 KB

@@ -64,5 +64,3 @@ class PostSchema(ma.SQLAlchemySchema):
     sadness_value = ma.auto_field()
     surprise_value =  ma.auto_field()
     created_at = ma.auto_field()
-post.py
-3 KB
