@@ -58,7 +58,7 @@ class PostSchema(ma.SQLAlchemySchema):
         load_instance = True
 
     id = ma.auto_field()
-    user_id = ma.auto_field(load_only=True)
+    user_id = ma.auto_field(dump_only=True)
     content = ma.auto_field(required=True, validate=validate.Length(min=1))
     formatting = ma.List(ma.Dict(), missing=[])
     anger_value = ma.auto_field(dump_only=True)
