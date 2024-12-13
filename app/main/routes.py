@@ -1,18 +1,19 @@
 from flask import g, jsonify, request
 import datetime
-import json
-
+import os
 from marshmallow import ValidationError
 from transformers import pipeline
 import boto3
 
 from app.extensions import db
 from app.auth import firebase_auth_required
-from app.models import User, Post, PostSchema, WeeklyAdviceSchema
+from app.models import User, Post, PostSchema, WeeklyAdvice, WeeklyAdviceSchema
 from . import main_bp
+
 
 # Initialize S3 client to store profile picture
 s3 = boto3.client("s3")
+
 
 # Initalization of LLM
 emotion_analyzer = pipeline(
@@ -22,15 +23,27 @@ emotion_analyzer = pipeline(
 )
 
 
-# -----------------------
+# --------------------------------------------------
 # Helper Functions
-# -----------------------
-def return_last_sunday(date):
-    """
-    Returns the date of the most recent Sunday before the given date.
+# --------------------------------------------------
+# List of supported emotions to prevent HuggingFace model updates
+# from breaking the Post model.
+SUPPORTED_EMOTIONS = {
+    "anger",
+    "disgust",
+    "fear",
+    "joy",
+    "neutral",
+    "sadness",
+    "surprise",
+}
+
+
+def return_last_sunday(date : datetime.date) -> datetime.date:
+    """Returns the date of the most recent Sunday before the given date.
 
     Args:
-        date (datetime.date): UTC date to find the most recent Sunday before.
+        date: UTC date to find the most recent Sunday before.
 
     Returns:
         datetime.date: The most recent Sunday before the given date.
@@ -38,16 +51,14 @@ def return_last_sunday(date):
     return date - datetime.timedelta(days=date.weekday() + 1)
 
 
-def get_or_create_user(firebase_uid):
-    """
-    Retrieve a user from User table by firebase_uid, otherwise create a new one if none exists.
-    Users are authenticated from the iOS frotend through Firebase from iOS frontend.
+def get_or_create_user(firebase_uid: str) -> User:
+    """Retrieve or create a user from User table by Firebase UID.
 
     Args:
-        firebase_uid (str): Firebase UID derived from the bearer token within request's Authorization header.
+        firebase_uid: Firebase UID derived from request's header bearer token.
 
     Returns:
-        user (User): Record from the User model table.
+        user: Retrieved or newly created User instance.
     """
     user = User.query.filter_by(firebase_uid=firebase_uid).first()
     if not user:
@@ -57,272 +68,264 @@ def get_or_create_user(firebase_uid):
     return user
 
 
-# -----------------------
-# Routes
-# -----------------------
-@main_bp.route("/api")
-@firebase_auth_required
-def index():
+def update_post_emotion(post: Post) -> Post:
+    """Analyze the emotion of post's content, and add/update post instance with emotion fields.
+
+    Args:
+        post: The Post instance to analyze.
+
+    Returns:
+        post: The updated Post instance with emotion scores.
     """
-    Endpoint to test authentication.
-    """
-    return jsonify({"message": "Authentication successful!"}), 200
+    # TODO: Refactor by handing-off to Celery Worker
+    emotions_output = emotion_analyzer(post.content)
+
+    if not emotions_output:
+        return post
+
+    for emotion_data in emotions_output[0]:
+        emotion = emotion_data["label"].lower()
+        score = emotion_data["score"]
+        # Add emotion score to Post instance, otherwise update existing score.
+        if emotion in SUPPORTED_EMOTIONS:
+            setattr(post, f"{emotion}_value", score)
+    return post
 
 
+# --------------------------------------------------
+# Post Routes
+# --------------------------------------------------
 @main_bp.route("/api/posts/", methods=["POST"])
 @firebase_auth_required
 def create_post():
-    """
-    Create a new post for the authenticated user.
+    """Endpoint to create a new post for the authenticated user.
 
-    Request Args:
-        content (str): The content of the post.
-        formatting (JSON): Formatting details associated with post content.
+    Request Body:
+        content (str): The content of the user's journal post.
+        formatting (JSON): A list of formatting objects describing how
+            content should be formatted.
 
-    Response Args:
-        message (str): Success message.
-        post (Post): Serialized Post instance.
-
-    Raises:
-        Bad Request 400: Invalid request body with missing field(s).
-        Internal Server Error 500: Failed to create post.
+    Responses:
+        201: Post created successfully.
+        400: Request body with missing data cannot be validated.
+        500: Post creation failed due to database error.
     """
     # Retrieve the user from User model from the Authorization bearer token.
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
-    # Validate request data
+    # Validate request 'content' and 'formatting' fields.
     data = request.get_json()
     try:
-        # Load the request data into a PostSchema instance
-        # Directly store 'formatting' as JSON in PostgreSQL, otherwise an empty List.
-        data.user_id = user.id
-        data = PostSchema().load(data)
+        # Schema replaces empty 'formatting' with empty List.
+        validated_data = PostSchema().load(data)
     except ValidationError as ve:
-        return jsonify({"error": "Invalid request body.", "messages": ve.messages}), 400
+        return jsonify({
+            "error": "Request body cannot be validated.",
+            "messages": ve.messages}), 400
 
-    # Insert emotion analysis data into new post before committing to the database
-    # TODO: Refactor by handing-off to Celery Worker
-    new_post = data
-    emotions_output = emotion_analyzer(data["content"])
-    for emotion_data in emotions_output[0]:
-        emotion, score = emotion_data["label"], emotion_data["score"]
-        new_post[emotion + "_value"] = score
+    # Insert emotion analysis data into new post before committing to database
+    new_post = Post(**validated_data)
+    new_post.user_id = user.id
+    new_post = update_post_emotion(data)
 
+    # Save new Post to the database.
     try:
         db.session.add(new_post)
         db.session.commit()
         serialized_new_post = PostSchema().dump(new_post)
-        return jsonify({"message": "Post created successfully.",
-                        "post": serialized_new_post}), 201
+        return jsonify({
+            "message": "Post created successfully.",
+            "post": serialized_new_post}), 201
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Failed to create post.",
-                        "message": str(e)}), 500
+        return jsonify({
+            "error": "Post cannot be created due to database error",
+            "message": str(e)}), 500
 
 
 @main_bp.route("/api/posts/modify/<int:post_id>/", methods=["POST"])
 @firebase_auth_required
-def modify_post(post_id):
-    """
-    Endpoint to modify for the authenticated user.
+def update_post(post_id):
+    """Endpoint to update post made by authenticated user.
+
+    Request Body:
+        content (str): New content to update existing post.
+        formatting (JSON): List of formatting object for new content.
+
+    Responses:
+        200: Post updated successfully.
+        400: Request body with missing data cannot be validated.
+        404: Post does not exist or not associated with user.
+        500: Post update failed due to database error.
     """
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
 
-    post = Post.query.filter_by(id=post_id).first()
+    # Validate update request body
+    try:
+        validated_data = PostSchema().load(data)
+    except ValidationError as ve:
+        return jsonify({
+            "error": "Request body cannot be validated.",
+            "messages": ve.messages}), 400
+
+    # Verify post existence and ownershiup
+    post = Post.query.filter_by(id=post_id, user_id=user.id).first()
     if post is None:
-        return (
-            jsonify({"error": "Failed to find find existing post with that id."}),
-            500,
-        )
-    elif post.user_id != user.id:
-        return jsonify({"error": "You cannot modify another user's post!"}), 500
+        return jsonify({
+            "error": f"Post {post_id} cannot be found."}), 404
 
-    post.content = data["content"]
-
-    emotions = emotion_analyzer(data["content"])
-
-    post.anger_value = emotions[0][0]["score"]
-    post.disgust_value = emotions[0][1]["score"]
-    post.fear_value = emotions[0][2]["score"]
-    post.joy_value = emotions[0][3]["score"]
-    post.neutral_value = emotions[0][4]["score"]
-    post.sadness_value = emotions[0][5]["score"]
-    post.surprise_value = emotions[0][6]["score"]
+    # Update the post with new fields, otherwise keep existing content.
+    post.content = validated_data.get("content", post.content)
+    post.formatting = validated_data.get("formatting", post.formatting)
+    update_post_emotion(post)
 
     try:
-        db.session.commit()
-        post_schema = PostSchema()
-        serialized_modified_post = post_schema.dump(post)
-        # Blank formatting array for front end
-        return (
-            jsonify(
-                {
-                    "message": "Post created successfully.",
-                    "post": serialized_modified_post,
-                    "formatting": [],
-                }
-            ),
-            201,
-        )
+        db.session.commit(post)
+        serialized_modified_post = PostSchema().dump(post)
+        return jsonify({"message": f"Post {post_id} updated successfully.",
+                        "post": serialized_modified_post}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Failed to modify post.", "message": str(e)}), 500
+        return jsonify({
+            "error": f"Post {post_id} cannot be updated due to database error.",
+            "message": str(e)}), 500
 
 
 @main_bp.route("/api/posts/", methods=["GET"])
 @firebase_auth_required
-def get_users_posts():
-    """
-    Endpoint to get a user's posts for the authenticated user.
-    """
+def get_posts():
+    """Endpoint to retrieve all posts made by the authenticated users.
 
+    Request Header:
+        Authorization: "Bearer <JWT_TOKEN>" (Firebase Auth Token)
+
+    Responses:
+        200: All posts for (new) user retrieved successfully.
+    """
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
-    posts = user.posts
-    post_schema = PostSchema()
-    all_posts = []
+    posts = Post.query.filter_by(user_id=user.id).all()
 
-    for post in posts:
-        post = post_schema.dump(post)
-        response = s3.get_object(
-            Bucket="notetakingprofilepicturesbucket",
-            Key="formatting" + str(post["id"]) + ".json",
-        )
-        content = response["Body"].read().decode("utf-8")
-
-        # Parse JSON content into a Python dictionary
-        data = json.loads(content)
-        post["formatting"] = data
-
-        all_posts.append(post)
-
-    return (
-        jsonify({"message": "All posts have been gathered.", "posts": all_posts}),
-        200,
-    )
+    # Empty list is returned if user has no posts.
+    serialized_posts = PostSchema(many=True).dump(posts)
+    return jsonify({
+        "message": "All posts for user retrieved successfully.",
+        "posts": serialized_posts}), 200
 
 
+# --------------------------------------------------
+# Weekly Advice Routes
+# --------------------------------------------------
 @main_bp.route("/api/weekly_advice/", methods=["GET"])
 @firebase_auth_required
-def get_users_weekly_advice():
-    """
-    Endpoint to create a new post for the authenticated user.
-    """
+def get_weekly_advice():
+    """Endpoint to retrieve latest weekly advice for the authenticated user.
 
+    Request Header:
+        Authorization: "Bearer <JWT_TOKEN>" (Firebase Auth Token)
+
+    Responses:
+        200: Retrieved advice of week {latest_sunday}.
+    """
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
-    weekly_advices = user.weekly_advices
-    weekly_advice_schema = WeeklyAdviceSchema()
-    lastSunday = return_last_sunday(datetime.date.today())
 
-    for weekly_advice in weekly_advices:
-        if weekly_advice.of_week.date() == lastSunday:
-            serialized_weekly_advice = weekly_advice_schema.dump(weekly_advice)
-            return (
-                jsonify(
-                    {
-                        "message": "Weekly Advice of week "
-                        + str(lastSunday)
-                        + " has been retrieved",
-                        "weekly_advice": serialized_weekly_advice,
-                    }
-                ),
-                200,
-            )
+    # Calculate the most recent Sunday date given the current date.
+    latest_sunday = return_last_sunday(datetime.date.today())
 
-    return (
-        jsonify({"message": "Unable to find a weekly advice for " + str(lastSunday)}),
-        404,
-    )
+    # Retrieve the latest weekly advice for the user.
+    weekly_advice = WeeklyAdvice.query.filter_by(user_id=user.id,
+                                                 of_week=latest_sunday).first()
+
+    # Empty dictionary is returned if no advice is found.
+    serialized_weekly_advice = WeeklyAdviceSchema().dump(weekly_advice)
+    return jsonify({"message": f"Retrieved advice of week {latest_sunday}.",
+                    "weekly_advice": serialized_weekly_advice}), 200
 
 
+# --------------------------------------------------
+# Profile Picture Routes
+# --------------------------------------------------
 @main_bp.route("/api/pfp/", methods=["GET"])
 @firebase_auth_required
-def get_users_pfp():
-    """
-    Endpoint to get a link to user's profile picture.
-    """
+def get_profile_picture():
+    """Retrieve S3 Bucket URL to user's profile picture.
 
+    Request Header:
+        Authorization: Bearer <JWT_TOKEN> (Firebase Authentication Token)
+
+    Responses:
+        200: Retrieved profile picture successfully.
+        404: Profile picture does not exist.
+    """
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     try:
-        s3.head_object(Bucket="notetakingprofilepicturesbucket", Key=f"{user.id}.png")
-    except:
-        # The image does not exist.
-        return jsonify({"message": "Could not retrieve profile picture."}), 404
+        s3.head_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
+                       Key=f"{user.id}.png")
+    except Exception as e:
+        return jsonify({"error": "Profile picture cannot be found.",
+                        "message" : str(e)}), 404
 
-    return (
-        jsonify(
-            {
-                "message": "Found profile picture.",
-                "link": "https://notetakingprofilepicturesbucket.s3.us-east-2.amazonaws.com/"
-                + str(user.id)
-                + ".png",
-            }
-        ),
-        200,
-    )
+    return jsonify({
+        "message": "Retrieved profile picture S3 URL.",
+        "link": os.environ.get("S3_BUCKET_URL") + str(user.id) + ".png"}), 200
 
 
 @main_bp.route("/api/pfp/", methods=["DELETE"])
 @firebase_auth_required
 def delete_users_pfp():
-    """
-    Endpoint to delete a user's profile picture.
-    """
+    """Endpoint to delete an user's profile picture.
 
+    Request Header:
+        Authorization: Bearer <JWT_TOKEN> (Firebase Authentication Token)
+
+    Responses:
+        201: Successfully deleted profile picture.
+        404: Profile picture does not exist.
+    """
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     try:
-        s3.delete_object(Bucket="notetakingprofilepicturesbucket", Key=f"{user.id}.png")
-    except:
-        return jsonify({"message": "Could not delete profile picture."}), 404
+        s3.delete_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
+                         Key=f"{user.id}.png")
+    except Exception as e:
+        return jsonify({"error": "Profile picture cannot be found.",
+                        "message": str(e)}), 404
 
-    return jsonify({"message": "Profile picture deleted."}), 201
+    return jsonify({"message": "Profile picture deleted successfully."}), 201
 
 
 @main_bp.route("/api/pfp/", methods=["POST"])
 @firebase_auth_required
 def upload_users_pfp():
-    """
-    Endpoint to upload a user's pfp to S3 and then return a link to the image.
-    """
-
+    """Endpoint to upload a user's profile picture to S3 bucket."""
     uploaded_file = request.files
     file_data = uploaded_file.to_dict().get("", None)
 
     if file_data is None:
-        return jsonify({"message": "Could not retrieve profile picture."}), 404
+        return jsonify({"error": "Profile picture failed to upload."}), 404
 
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
-    s3.upload_fileobj(
-        file_data,
-        "notetakingprofilepicturesbucket",
-        f"{user.id}.png",
-        ExtraArgs={"ACL": "public-read"},
-    )
+    s3.upload_fileobj(file_data,
+                      os.environ.get("S3_BUCKET_NAME"),
+                      f"{user.id}.png",
+                      ExtraArgs={"ACL": "public-read"})
 
     try:
-        s3.head_object(Bucket="notetakingprofilepicturesbucket", Key=f"{user.id}.png")
+        s3.head_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
+                       Key=f"{user.id}.png")
     except:
-        # The image does not exist.
-        return jsonify({"message": "Could not retrieve profile picture."}), 404
+        return jsonify({"error": "Profile picture cannot be found."}), 404
 
-    return (
-        jsonify(
-            {
-                "message": "Created profile picture.",
-                "link": "https://notetakingprofilepicturesbucket.s3.us-east-2.amazonaws.com/"
-                + str(user.id)
-                + ".png",
-            }
-        ),
-        200,
-    )
+    return jsonify({
+        "message": "Upload profile picture successfully.",
+        "link": os.environ.get("S3_BUCKET_URL") + str(user.id) + ".png"}), 201
