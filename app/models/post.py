@@ -55,7 +55,6 @@ class PostSchema(ma.SQLAlchemySchema):
 
     class Meta:
         model = Post
-        load_instance = True
 
     id = ma.auto_field()
     user_id = ma.auto_field(dump_only=True)

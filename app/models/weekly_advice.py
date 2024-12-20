@@ -32,7 +32,6 @@ class WeeklyAdviceSchema(ma.SQLAlchemySchema):
 
     class Meta:
         model = WeeklyAdvice
-        load_instance = True
 
     id = ma.auto_field()
     user_id = ma.auto_field(dump_only=True)

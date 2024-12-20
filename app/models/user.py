@@ -42,7 +42,6 @@ class UserSchema(ma.SQLAlchemySchema):
 
     class Meta:
         model = User
-        load_instance = True
 
     id = ma.auto_field()
     firebase_uid = ma.auto_field(required=True, validate=validate.Length(min=1))
