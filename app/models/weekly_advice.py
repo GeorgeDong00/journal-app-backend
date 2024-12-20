@@ -1,10 +1,16 @@
-from marshmallow import validate
 from app.extensions import db, ma
 
 
 class WeeklyAdvice(db.Model):
     """
-    WeeklyAdvice model representing advice provided to a user on a weekly basis.
+    Represents a user's weekly advice generated on behalf of an user by async workers every Sunday at 12:00 AM UTC.
+
+    Attributes:
+        - id (int): Primary key of the weekly advice.
+        - user_id (int): Foreign key referencing the user's ID.
+        - content (str): Content of the weekly advice.
+        - created_at (datetime): UTC timestamp of when the weekly advice was created.
+        - of_week (datetime): UTC datetime of a Sunday at 12:00 AM UTC.
     """
 
     __tablename__ = "weekly_advices"
@@ -16,7 +22,7 @@ class WeeklyAdvice(db.Model):
     of_week = db.Column(db.DateTime, default=db.func.now())
 
     def __repr__(self):
-        return f"<WeeklyAdvice {self.id} for User {self.user_id}>"
+        return f"<Weekly Advice {self.id} for User {self.user_id}>"
 
 
 class WeeklyAdviceSchema(ma.SQLAlchemySchema):
@@ -26,10 +32,9 @@ class WeeklyAdviceSchema(ma.SQLAlchemySchema):
 
     class Meta:
         model = WeeklyAdvice
-        load_instance = True
 
     id = ma.auto_field()
     user_id = ma.auto_field(dump_only=True)
-    content = ma.auto_field(dump_only=True, validate=validate.Length(min=1))
+    content = ma.auto_field(dump_only=True)
     created_at = ma.auto_field(dump_only=True)
     of_week = ma.auto_field(dump_only=True)
