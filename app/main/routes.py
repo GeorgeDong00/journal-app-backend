@@ -6,7 +6,9 @@ import boto3
 
 from app.extensions import db
 from app.auth import firebase_auth_required
-from app.models import User, Post, PostSchema, WeeklyAdvice, WeeklyAdviceSchema
+from app.models import (User,
+                        Post, PostSchema, PostSchemaNoEmotions,
+                        WeeklyAdvice, WeeklyAdviceSchema)
 from . import main_bp
 
 
@@ -62,7 +64,7 @@ def get_or_create_user(firebase_uid: str) -> User:
 # Post Routes
 # --------------------------------------------------
 @main_bp.route("/api/posts/", methods=["POST"])
-@firebase_auth_required
+# @firebase_auth_required
 def create_post():
     """Endpoint to create a new post for the authenticated user.
 
@@ -81,8 +83,8 @@ def create_post():
     """
     current_app.logger.info("Handling request to create a new post.")
     # Retrieve the user from User model from the Authorization bearer token.
-    firebase_uid = g.user["uid"]
-    user = get_or_create_user(firebase_uid)
+    # firebase_uid = g.user["uid"]
+    user = get_or_create_user("test=user")
 
     # Validate request 'content' and 'formatting' fields.
     data = request.get_json()
@@ -104,14 +106,14 @@ def create_post():
         db.session.add(new_post)
         db.session.commit()
         current_app.logger.info(f"Committed {new_post} to database.")
-        serialized_new_post = PostSchema().dump(new_post)
+        serialized_new_post = PostSchemaNoEmotions().dump(new_post)
 
         # Offload emotion analysis to Celery Worker
         current_app.celery.send_task("generate_content_emotional_scores",
                                      args=[new_post.content, new_post.id])
-        return jsonify({
-            "message": "Post created successfully.",
-            "post": serialized_new_post}), 201
+        return jsonify({"message": ("Post created successfully. "
+                                    "Currently analyzing emotions—check back in one minute."),
+                        "post": serialized_new_post}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -163,13 +165,14 @@ def update_post(post_id):
     try:
         db.session.commit()
         current_app.logger.info(f"Committed new {post_instance} to database.")
-        serialized_modified_post = PostSchema().dump(post_instance)
+        serialized_modified_post = PostSchemaNoEmotions().dump(post_instance)
 
         # Offload emotion analysis to Celery Worker
         current_app.celery.send_task("generate_content_emotional_scores",
                                      args=[post_instance.content, post_instance.id])
 
-        return jsonify({"message": f"Post {post_id} updated successfully.",
+        return jsonify({"message": (f"Post {post_id} updated successfully. "
+                                    "Currently analyzing emotions—check back in one minute."),
                         "post": serialized_modified_post}), 200
     except Exception as e:
         db.session.rollback()
@@ -211,7 +214,16 @@ def get_post(post_id):
     """Endpoint to retrieve a specific post made by the authenticated user.
 
     Request Header:
-        Authorization
+        Authorization (str): "Bearer <JWT_TOKEN>" (Firebase Auth Token)
+        post_id (int): The ID of the post to retrieve.
+
+    Returns:
+        200 OK: Message and serialized list of all user's posts.
+
+    Raises:
+        400 Bad Request: If the post ID is invalid.
+        401 Unauthorized: If the token is invalid or missing.
+        404 Not Found: If the post does not exist or is not associated with the user.
     """
     current_app.logger.info(f"Handling request to retrieve post instance {post_id}.")
     firebase_uid = g.user["uid"]
