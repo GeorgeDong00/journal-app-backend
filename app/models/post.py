@@ -68,3 +68,18 @@ class PostSchema(ma.SQLAlchemySchema):
     sadness_value = ma.auto_field(dump_only=True)
     surprise_value = ma.auto_field(dump_only=True)
     created_at = ma.auto_field(dump_only=True)
+
+class PostSchemaNoEmotions(ma.SQLAlchemySchema):
+    """
+    Marshmallow schema for deserializing recently create and updated Posts
+    to allow the offloading of sentiment analysis and emotional scoring to
+    workers.
+    """
+    class Meta:
+        model = Post
+
+    id = ma.auto_field()
+    user_id = ma.auto_field(dump_only=True)
+    content = ma.auto_field(required=True, validate=validate.Length(min=1))
+    formatting = ma.List(ma.Dict(), missing=[])
+    created_at = ma.auto_field(dump_only=True)

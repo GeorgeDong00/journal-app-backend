@@ -1,6 +1,7 @@
 from celery.utils.log import get_task_logger
-from app.tasks_logic import generate_weekly_advice_for_user
+from app.tasks_logic import generate_weekly_advice_for_user, update_post_emotion
 from app.models import User
+from time import sleep
 
 logger = get_task_logger(__name__)
 
@@ -30,3 +31,40 @@ def register_tasks(celery):
     def test_task():
         print("Test task is running every 15 seconds!")
         return "Test task completed."
+
+    @celery.task(name="generate_content_emotional_scores")
+    def generate_content_emotional_scores(content, post_id):
+        """
+        Defines a Celery task that calls a serverless Hugging Face API URL to generates emotional
+        scores for a given post content. The inference API is load balanced, the worker
+        will attempt twice with 20 seconds in between before failing.
+
+        Parameters:
+            post_content (str): Text content of a post.
+
+        Returns:
+            status
+
+        """
+        logger.info(f"Starting task to generate emotional scores for post {post_id}.")
+        attempts = 2
+        for i in range(attempts):
+            try:
+                success = update_post_emotion(content, post_id)
+                if success:
+                    logger.info(f"Successfully updated post {post_id} on attempt #{i + 1}.")
+                    return True
+                else:
+                    logger.warning(
+                        f"Attempt #{i + 1} to update post {post_id} failed."
+                        + ("" if i == attempts - 1 else " Will retry in 20s.")
+                    )
+            except Exception as e:
+                logger.error(f"Error occured for attempt #{i + 1}: {e}.")
+
+            # Sleep for 20 seconds before retrying
+            if i < attempts - 1:
+                sleep(20)
+
+        logger.error(f"Failed to update post {post_id} after {attempts} attempts.")
+        return False
