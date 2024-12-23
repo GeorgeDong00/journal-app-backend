@@ -1,4 +1,4 @@
-from flask import g, jsonify, request
+from flask import g, jsonify, request, current_app
 import datetime
 import os
 from marshmallow import ValidationError
@@ -70,10 +70,13 @@ def get_or_create_user(firebase_uid: str) -> User:
         user: Retrieved or newly created User instance.
     """
     user = User.query.filter_by(firebase_uid=firebase_uid).first()
+    current_app.logger.info(f"Retrieved {user} of Firebase UID {firebase_uid}.")
+
     if not user:
         user = User(firebase_uid=firebase_uid)
         db.session.add(user)
         db.session.commit()
+        current_app.logger.info(f"Created {user} of Firebase UID {firebase_uid}.")
     return user
 
 
@@ -90,14 +93,17 @@ def update_post_emotion(post_instance: Post) -> Post:
     emotions_output = emotion_analyzer(post_instance.content)
 
     if not emotions_output:
+        current_app.logger.warning("No sentiment scores found.")
         return post_instance
 
     for emotion_data in emotions_output[0]:
         emotion = emotion_data["label"].lower()
-        score = emotion_data["score"]
+        score = round(emotion_data["score"], 3)
+
         # Add emotion score to Post instance, otherwise update existing score.
         if emotion in SUPPORTED_EMOTIONS:
             setattr(post_instance, f"{emotion}_value", score)
+            current_app.logger.info(f"Added {emotion} score {score} to {post_instance}.")
     return post_instance
 
 
@@ -122,6 +128,7 @@ def create_post():
         401 Unauthorized: If the token is invalid or missing.
         500 Internal Server Error: If a database error occurs.
     """
+    current_app.logger.info("Handling request to create a new post.")
     # Retrieve the user from User model from the Authorization bearer token.
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
@@ -129,22 +136,25 @@ def create_post():
     # Validate request 'content' and 'formatting' fields.
     data = request.get_json()
     try:
-        # Schema replaces empty 'formatting' with empty List.
+        # Empty 'formatting' data will be replaced with empty List.
         validated_data = PostSchema().load(data)
+        current_app.logger.info("Validated request data.")
+
     except ValidationError as ve:
-        return jsonify({
-            "error": "Request body cannot be validated.",
-            "messages": ve.messages}), 400
+        current_app.logger.error(f"{ve.messages["content"][0]}")
+        return jsonify({"error": f"Failed validation with {ve.messages['content'][0]}."}), 400
 
     # Insert emotion analysis data into new post before committing to database
     new_post = Post(**validated_data)
     new_post.user_id = user.id
     new_post = update_post_emotion(new_post)
+    current_app.logger.info(f"Added user id and emotion scores to {new_post}.")
 
     # Save new Post to the database.
     try:
         db.session.add(new_post)
         db.session.commit()
+        current_app.logger.info(f"Committed {new_post} to database.")
         serialized_new_post = PostSchema().dump(new_post)
         return jsonify({
             "message": "Post created successfully.",
@@ -152,12 +162,11 @@ def create_post():
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "error": "Post cannot be created due to database error",
-            "message": str(e)}), 500
+        current_app.logger.error(f"Rollback occured since creation failed with {str(e)}.")
+        return jsonify({"error": f"Post cannot be created with {str(e)}."}), 500
 
 
-@main_bp.route("/api/posts/modify/<int:post_id>/", methods=["PUT"])
+@main_bp.route("/api/post/<int:post_id>/", methods=["PUT"])
 @firebase_auth_required
 def update_post(post_id):
     """Endpoint to update a post made by the authenticated user.
@@ -176,6 +185,7 @@ def update_post(post_id):
         404 Not Found: If specified post does not exist or associated with user.
         500 Internal Server Error: If a database error occurs.
     """
+    current_app.logger.info(f"Handling request to update post instance {post_id}.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
     data = request.get_json()
@@ -184,31 +194,30 @@ def update_post(post_id):
     try:
         validated_data = PostSchema().load(data)
     except ValidationError as ve:
-        return jsonify({
-            "error": "Request body cannot be validated.",
-            "messages": ve.messages}), 400
+        return jsonify({"error": f"Failed validation with {ve.messages['content'][0]}."}), 400
 
     # Verify post existence and ownershiup
     post_instance = Post.query.filter_by(id=post_id, user_id=user.id).first()
+    current_app.logger.info(f"Retrieved {post_instance}.")
     if post_instance is None:
-        return jsonify({
-            "error": f"Post {post_id} cannot be found."}), 404
+        return jsonify({"error": f"Post {post_id} cannot be found."}), 404
 
     # Update the post with new fields, otherwise keep existing content.
     post_instance.content = validated_data.get("content", post_instance.content)
     post_instance.formatting = validated_data.get("formatting", post_instance.formatting)
     update_post_emotion(post_instance)
+    current_app.logger.info(f"Updated {post_instance} with new content and scores.")
 
     try:
         db.session.commit()
+        current_app.logger.info(f"Committed new {post_instance} to database.")
         serialized_modified_post = PostSchema().dump(post_instance)
         return jsonify({"message": f"Post {post_id} updated successfully.",
                         "post": serialized_modified_post}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "error": f"Post {post_id} cannot be updated due to database error.",
-            "message": str(e)}), 500
+        current_app.logger.error(f"Rollback occured since update failed with {str(e)}.")
+        return jsonify({"error": f"Failed to update Post {post_id} with {str(e)}."}), 500
 
 
 @main_bp.route("/api/posts/", methods=["GET"])
@@ -225,11 +234,13 @@ def get_posts():
     Raises:
         401 Unauthorized: If the token is invalid or missing.
     """
+    current_app.logger.info("Handling request to retrieve all post instances.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     # Retrieve all posts made by the user.
     post_instances = Post.query.filter_by(user_id=user.id).all()
+    current_app.logger.info(f"Retrieved {len(post_instances)} post instances.")
 
     # Marshmallow serializes the post instances into JSON
     serialized_posts = PostSchema(many=True).dump(post_instances)
@@ -255,21 +266,24 @@ def get_weekly_advice():
     Raises:
         401 Unauthorized: If the token is invalid or missing.
     """
+    current_app.logger.info("Handling request to retrieve latest weekly advice.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     # Calculate the most recent Sunday date given the current date.
     current_utc_date = datetime.now(datetime.timezone.utc).date()
     latest_sunday = return_previous_sunday(current_utc_date)
+    current_app.logger(f"Returned latest Sunday date as {latest_sunday}.")
 
     # Retrieve the latest weekly advice for the user.
-    weekly_advice = WeeklyAdvice.query.filter_by(user_id=user.id,
-                                                 of_week=latest_sunday).first()
+    advice = WeeklyAdvice.query.filter_by(user_id=user.id,
+                                          of_week=latest_sunday).first()
+    current_app.logger.info(f"Retrieved {advice}.")
 
     # Empty dictionary is returned if no advice is found.
-    serialized_weekly_advice = WeeklyAdviceSchema().dump(weekly_advice)
-    return jsonify({"message": f"Retrieved advice of week {latest_sunday}.",
-                    "weekly_advice": serialized_weekly_advice}), 200
+    serialized_weekly_advice = WeeklyAdviceSchema().dump(advice)
+    return jsonify({"message": f"Week of {latest_sunday} has {len(advice)} advice.",
+                    "advice": serialized_weekly_advice}), 200
 
 
 # --------------------------------------------------
@@ -290,6 +304,7 @@ def get_profile_picture():
         401 Unauthorized: If the token is invalid or missing.
         404 Not Found: If the profile picture does not exist.
     """
+    current_app.logger.info("Handling request to retrieve profile picture.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
@@ -320,6 +335,7 @@ def delete_users_pfp():
         401 Unauthorized: If the token is invalid or missing.
         404 Not Found: If the profile picture does not exist.
     """
+    current_app.logger.info("Handling request to delete profile picture.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
@@ -349,13 +365,14 @@ def upload_users_pfp():
         401 Unauthorized: If the token is invalid or missing.
         404 Not Found: If the profile picture cannot be found after upload.
     """
+    current_app.logger.info("Handling request to upload profile picture.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     # Retrieve uploaded file from request "file" field.
-    file_data = request.files.get('file', None)
+    file_data = request.files.get('ImageFile', None)
     if file_data is None:
-        return jsonify({"error": "Profile picture failed to upload."}), 400
+        return jsonify({"error": "Request is missing image or `ImageFile` key."}), 400
 
     s3.upload_fileobj(file_data,
                       os.environ.get("S3_BUCKET_NAME"),

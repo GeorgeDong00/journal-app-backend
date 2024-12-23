@@ -22,7 +22,7 @@ class WeeklyAdvice(db.Model):
     of_week = db.Column(db.DateTime, default=db.func.now())
 
     def __repr__(self):
-        return f"<Weekly Advice {self.id} for User {self.user_id}>"
+        return f"<Weekly Advice {self.id} for User {self.user_id} of Week {self.of_week}>"
 
 
 class WeeklyAdviceSchema(ma.SQLAlchemySchema):

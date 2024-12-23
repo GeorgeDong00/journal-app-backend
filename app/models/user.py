@@ -29,7 +29,7 @@ class User(db.Model):
         """
         String representation of the User instance
         """
-        return f"<User {self.firebase_uid}>"
+        return f"<User {self.id}>"
 
 
 class UserSchema(ma.SQLAlchemySchema):
