@@ -2,7 +2,6 @@ from flask import g, jsonify, request, current_app
 import datetime
 import os
 from marshmallow import ValidationError
-from transformers import pipeline
 import boto3
 
 from app.extensions import db
@@ -15,30 +14,9 @@ from . import main_bp
 s3 = boto3.client("s3")
 
 
-# Initalization of LLM
-emotion_analyzer = pipeline(
-    "text-classification",
-    model="j-hartmann/emotion-english-distilroberta-base",
-    return_all_scores=True,
-)
-
-
 # --------------------------------------------------
 # Helper Functions
 # --------------------------------------------------
-# List of supported emotions to prevent HuggingFace model updates
-# from breaking the Post model.
-SUPPORTED_EMOTIONS = {
-    "anger",
-    "disgust",
-    "fear",
-    "joy",
-    "neutral",
-    "sadness",
-    "surprise",
-}
-
-
 def return_previous_sunday(date : datetime.date) -> datetime.date:
     """Returns the datetime of latest previous (last week) Sunday before given
     date. The datetime is set to midnight UTC and is used to retrieve the latest
@@ -80,33 +58,6 @@ def get_or_create_user(firebase_uid: str) -> User:
     return user
 
 
-def update_post_emotion(post_instance: Post) -> Post:
-    """Analyze the emotion of post's content, and add/update post instance with emotion fields.
-
-    Args:
-        post_instance: The Post instance to analyze.
-
-    Returns:
-        post_instance: The updated Post instance with emotion scores.
-    """
-    # TODO: Refactor by handing-off to Celery Worker
-    emotions_output = emotion_analyzer(post_instance.content)
-
-    if not emotions_output:
-        current_app.logger.warning("No sentiment scores found.")
-        return post_instance
-
-    for emotion_data in emotions_output[0]:
-        emotion = emotion_data["label"].lower()
-        score = round(emotion_data["score"], 3)
-
-        # Add emotion score to Post instance, otherwise update existing score.
-        if emotion in SUPPORTED_EMOTIONS:
-            setattr(post_instance, f"{emotion}_value", score)
-            current_app.logger.info(f"Added {emotion} score {score} to {post_instance}.")
-    return post_instance
-
-
 # --------------------------------------------------
 # Post Routes
 # --------------------------------------------------
@@ -144,11 +95,9 @@ def create_post():
         current_app.logger.error(f"{ve.messages["content"][0]}")
         return jsonify({"error": f"Failed validation with {ve.messages['content'][0]}."}), 400
 
-    # Insert emotion analysis data into new post before committing to database
     new_post = Post(**validated_data)
     new_post.user_id = user.id
-    new_post = update_post_emotion(new_post)
-    current_app.logger.info(f"Added user id and emotion scores to {new_post}.")
+    current_app.logger.info(f"Added user id to {new_post}.")
 
     # Save new Post to the database.
     try:
@@ -156,6 +105,10 @@ def create_post():
         db.session.commit()
         current_app.logger.info(f"Committed {new_post} to database.")
         serialized_new_post = PostSchema().dump(new_post)
+
+        # Offload emotion analysis to Celery Worker
+        current_app.celery.send_task("generate_content_emotional_scores",
+                                     args=[new_post.content, new_post.id])
         return jsonify({
             "message": "Post created successfully.",
             "post": serialized_new_post}), 201
@@ -205,13 +158,17 @@ def update_post(post_id):
     # Update the post with new fields, otherwise keep existing content.
     post_instance.content = validated_data.get("content", post_instance.content)
     post_instance.formatting = validated_data.get("formatting", post_instance.formatting)
-    update_post_emotion(post_instance)
-    current_app.logger.info(f"Updated {post_instance} with new content and scores.")
+    current_app.logger.info(f"Updated {post_instance} with new content.")
 
     try:
         db.session.commit()
         current_app.logger.info(f"Committed new {post_instance} to database.")
         serialized_modified_post = PostSchema().dump(post_instance)
+
+        # Offload emotion analysis to Celery Worker
+        current_app.celery.send_task("generate_content_emotional_scores",
+                                     args=[post_instance.content, post_instance.id])
+
         return jsonify({"message": f"Post {post_id} updated successfully.",
                         "post": serialized_modified_post}), 200
     except Exception as e:
