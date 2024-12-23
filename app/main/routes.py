@@ -205,6 +205,32 @@ def get_posts():
         "message": "All posts made by user retrieved successfully.",
         "posts": serialized_posts}), 200
 
+@main_bp.route("/api/post/<int:post_id>/", methods=["GET"])
+@firebase_auth_required
+def get_post(post_id):
+    """Endpoint to retrieve a specific post made by the authenticated user.
+
+    Request Header:
+        Authorization
+    """
+    current_app.logger.info(f"Handling request to retrieve post instance {post_id}.")
+    firebase_uid = g.user["uid"]
+    user = get_or_create_user(firebase_uid)
+
+    if post_id and post_id <= 0:
+        current_app.logger.error(f"Invalid post id {post_id} provided.")
+        return jsonify({"error": "Requested post id cannot be zero or less."}), 400
+
+    post_instance = Post.query.filter_by(id=post_id,
+                                         user_id=user.id).first()
+    if not post_instance:
+        return jsonify({"error": f"Post {post_id} cannot be found."}), 404
+
+    current_app.logger.info(f"Retrieved {post_instance}.")
+    serialized_post = PostSchema().dump(post_instance)
+    return jsonify({"message": "Post retrieved successfully.",
+                    "post": serialized_post}), 200
+
 
 # --------------------------------------------------
 # Weekly Advice Routes
