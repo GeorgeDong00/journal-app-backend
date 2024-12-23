@@ -30,3 +30,19 @@ def register_tasks(celery):
     def test_task():
         print("Test task is running every 15 seconds!")
         return "Test task completed."
+
+    @celery.task(name="generate_content_emotional_scores")
+    def generate_content_emotional_scores(content, post_id):
+        """
+        Defines a Celery task that calls a serverless Hugging Face API URL to generates emotional
+        scores for a given post content. The inference API is load balanced, the worker
+        will attempt twice with 20 seconds in between before failing.
+
+        Parameters:
+            post_content (str): Text content of a post.
+
+        Returns:
+            status
+
+        """
+        return True

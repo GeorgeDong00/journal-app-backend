@@ -3,6 +3,8 @@ from app.models import Post, WeeklyAdvice
 from app.extensions import db
 from flask import current_app
 import openai
+import os
+import requests
 
 
 def generate_advice(posts):
@@ -73,3 +75,61 @@ def generate_weekly_advice_for_user(user):
         db.session.commit()
         return weekly_advice
     return None
+
+
+# List of supported emotions to prevent HuggingFace model updates
+# from breaking the Post model.
+SUPPORTED_EMOTIONS = {
+    "anger",
+    "disgust",
+    "fear",
+    "joy",
+    "neutral",
+    "sadness",
+    "surprise",
+}
+
+
+def update_post_emotion(content, post_id) -> Post:
+    """Analyze the emotion of post's content, and add/update post instance with emotion fields.
+    """
+    try:
+        post_instance = Post.query.get(post_id)
+
+        if not post_instance:
+            current_app.logger.error(f"Cannot find post {post_id}.")
+            return False
+
+        current_app.logger.info(f"Attempt to call Hugging Face API for {post_id}.")
+        emotions_output = query_hugging_face_llm(content)
+        if not emotions_output:
+            current_app.logger.warning("No sentiment scores found.")
+            return False
+
+        for emotion_data in emotions_output[0]:
+            emotion = emotion_data["label"].lower()
+            score = round(emotion_data["score"], 3)
+
+            # Add emotion score to Post instance, otherwise update existing score.
+            if emotion in SUPPORTED_EMOTIONS:
+                setattr(post_instance, f"{emotion}_value", score)
+                current_app.logger.info(f"Added {emotion} score {score} to {post_instance}.")
+
+        db.session.commit()
+        current_app.logger.info(f"Successfully updated post {post_id} with emotion scores.")
+        return True
+    except Exception as e:
+        current_app.logger.error(f"Error updating post emotion: {e}")
+        return None
+
+
+def query_hugging_face_llm(content):
+    headers = {"Authorization" : f"Bearer {os.environ.get('HUGGING_FACE_API_TOKEN')}"}
+    payload = {"inputs": content}
+
+    response = requests.post(os.environ.get("EMOTION_SCORE_API_URL"),
+                             headers=headers,
+                             json=payload)
+
+    # Parse the response from the API
+    return response.json()
