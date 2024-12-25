@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 from app.models import Post, WeeklyAdvice
 from app.extensions import db
 from flask import current_app
-import openai
+from openai import OpenAI
 import os
 import requests
 
@@ -17,32 +17,47 @@ def generate_advice(posts):
     Returns:
         openAI_response (str): Formatted string of user posts.
     """
-    prompt = "The user had the following posts last week:\n\n"
+    prompt = """
+
+    You are a supportive mental health coach who also loves riddles. After reading the
+    attached journal entries, craft a short, and encouraging weekly piece of advice
+    disguised as a riddle. The riddle should revolve around the main theme and emotion of the
+    journal entries.
+
+    **Ensure that the answer to the riddle is a single word.**
+
+    End with a simple, clear takeaway on how to approach the upcoming week. Please respond
+    in the following JSON format:
+
+    {{
+        "riddle": "Your riddle here",
+        "answer": "The answer to your riddle",
+        "advice": "Your advice here"
+    }}
+
+    ---
+    """
+    prompt += "\n **Journal Entries** \n"
     for post in posts:
         prompt += f"- {post.content}\n"
 
-    prompt += (
-        "\nGiven these entries, please provide a short, encouraging piece of weekly advice "
-        "focused on mental health and well-being. The advice should be empathetic, "
-        "supportive, and actionable, guiding the user on how to approach the coming week."
-    )
-
-    openai.api_key = current_app.config.get("OPENAI_API_KEY")
-
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are a supportive mental health profession who gives actionable tips.",
-                },
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=250,
+            max_tokens=2048,
+            top_p=1.0,
+            frequency_penalty=0.2,
+            presence_penalty=0.0,
+
         )
-        advice_content = response["choices"][0]["message"]["content"].strip()
+        advice_content = response.choices[0].message.content
+        current_app.logger.info(
+            f"OpenAI request {response._request_id} returned: {advice_content}")
         return advice_content
     except Exception as e:
         current_app.logger.error(f"OpenAI API call failed: {e}")
@@ -60,7 +75,7 @@ def generate_weekly_advice_for_user(user):
     Returns:
         weekly_advice: Generated weekly advice through OpenAI API.
     """
-    retrieval_window = datetime.now(timezone.utc) - timedelta(seconds=60)
+    retrieval_window = datetime.now(timezone.utc) - timedelta(seconds=6000)
     posts = Post.query.filter(Post.user_id == user.id,
                               Post.created_at >= retrieval_window).all()
     if not posts:
