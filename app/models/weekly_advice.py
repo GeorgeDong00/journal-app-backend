@@ -8,7 +8,7 @@ class WeeklyAdvice(db.Model):
     Attributes:
         - id (int): Primary key of the weekly advice.
         - user_id (int): Foreign key referencing the user's ID.
-        - content (str): Content of the weekly advice.
+        - content (JSON): Content of the weekly advice.
         - created_at (datetime): UTC timestamp of when the weekly advice was created.
         - of_week (datetime): UTC datetime of a Sunday at 12:00 AM UTC.
     """
@@ -17,7 +17,7 @@ class WeeklyAdvice(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    content = db.Column(db.Text, nullable=False)
+    content = db.Column(db.JSON, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.now())
     of_week = db.Column(db.DateTime, default=db.func.now())
 
