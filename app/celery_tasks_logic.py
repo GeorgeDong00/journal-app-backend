@@ -1,22 +1,60 @@
 from datetime import datetime, timezone, timedelta
-from app.models import Post, WeeklyAdvice
-from app.extensions import db
 from flask import current_app
 from openai import OpenAI
 import os
 import requests
 
+from app.models import Post, WeeklyAdvice
+from app.extensions import db
 
-def generate_advice(posts):
+
+# List of supported emotions to prevent HuggingFace model updates from breaking the Post model.
+SUPPORTED_EMOTIONS = {
+    "anger",
+    "disgust",
+    "fear",
+    "joy",
+    "neutral",
+    "sadness",
+    "surprise",
+}
+
+# --------------------------------------------------
+# Advice Generation
+# --------------------------------------------------
+
+def retrieve_user_recent_posts(user_id, window_seconds=604799):
     """
-    Invokes OpenAI API to generate personalized advice based on the posts.
+    Retrieves posts from the user within a specified time window.
+
+    Parameters:
+        user_id (int): User ID for whom the posts are to be retrieved.
+        window_seconds (int): Time window in seconds, defaulting to 7 days
+
+    Returns:
+        List of posts from the user within the time window.
+    """
+    cutoff_time = datetime.now(timezone.utc) - timedelta(window_seconds)
+    return Post.query.filter(
+        Post.user_id == user_id,
+        Post.created_at >= cutoff_time
+    ).all()
+
+
+def call_openai_advice_generation(posts):
+    """
+    Invokes the OpenAI API to generate a JSON-based riddle and advice from a list of user posts.
 
     Parameters:
         posts (list): List of posts from an user.
 
     Returns:
-        openAI_response (str): Formatted string of user posts.
+        advice_content (str): Formatted string of user posts.
     """
+    if not posts:
+        current_app.logger.warning("No posts provided for OpenAI advice generation.")
+        return None
+
     prompt = """
 
     You are a supportive mental health coach who also loves riddles. After reading the
@@ -37,7 +75,7 @@ def generate_advice(posts):
 
     ---
     """
-    prompt += "\n **Journal Entries** \n"
+    prompt += "\n**Journal Entries**\n"
     for post in posts:
         prompt += f"- {post.content}\n"
 
@@ -66,53 +104,65 @@ def generate_advice(posts):
 
 def generate_weekly_advice_for_user(user):
     """
-    Queries the user's posts from specified days, calls OpenAI API to generates personalized weekly
-    advice, and stores output advice in the weekly_advice database.
+    Generates and stores the weekly advice for a given user by:
+      1. Fetching the user's recent posts within a window.
+      2. Calling the OpenAI endpoint to generate a JSON-based advice/riddle.
+      3. Saving the result into the WeeklyAdvice table.
 
     Parameters:
-        user (User): User for whom the advice is to be generated.
+        user (User): User instance for whom the advice is generated.
 
     Returns:
-        weekly_advice: Generated weekly advice through OpenAI API.
+        weekly_advice: Newly created WeeklyAdvice instance or None if generation failed
     """
-    retrieval_window = datetime.now(timezone.utc) - timedelta(seconds=6000)
-    posts = Post.query.filter(Post.user_id == user.id,
-                              Post.created_at >= retrieval_window).all()
+    # Retrieve the user's recent posts
+    posts = retrieve_user_recent_posts(user.id, 604799)
     if not posts:
+        current_app.logger.warning(f"No posts found for user {user.id}. Skipping advice generation")
         return None
 
-    advice_content = generate_advice(posts)
-    if advice_content:
-        weekly_advice = WeeklyAdvice(user_id=user.id, content=advice_content)
-        db.session.add(weekly_advice)
+    advice_content = call_openai_advice_generation(posts)
+    if not advice_content:
+        current_app.logger.warning("No advice content generated.")
+        return None
+
+    try:
+        new_advice = WeeklyAdvice(user_id=user.id, content=advice_content)
+        db.session.add(new_advice)
         db.session.commit()
-        return weekly_advice
-    return None
+        current_app.logger.info(f"Generated and stored new advice for {user}")
+        return new_advice
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(
+            f"Failed to create new advice for {user} due to {e}."
+        )
+        return None
 
+# --------------------------------------------------
+# Sentiment Analysis and Emotion Scoring
+# --------------------------------------------------
 
-# List of supported emotions to prevent HuggingFace model updates from breaking the Post model.
-SUPPORTED_EMOTIONS = {
-    "anger",
-    "disgust",
-    "fear",
-    "joy",
-    "neutral",
-    "sadness",
-    "surprise",
-}
-
-
-def query_hugging_face_llm(content):
+def call_hf_llm_api(content):
     headers = {"Authorization" : f"Bearer {os.environ.get('HUGGING_FACE_API_TOKEN')}"}
     payload = {"inputs": content}
 
-    response = requests.post(os.environ.get("EMOTION_SCORE_API_URL"),
-                             headers=headers,
-                             json=payload)
+    current_app.logger.info("Attempt to call Hugging Face API.")
+    try:
+        response = requests.post(os.environ.get("EMOTION_SCORE_API_URL"),
+                                 headers=headers,
+                                 json=payload)
 
-    current_app.logger.info(f"Returned from API call with status code {response.status_code}.")
-    current_app.logger.info(f"Response: {response.json()}")
-    return response.json()
+        if response.status_code != 200:
+            current_app.logger.warning(
+                f"Failed HuggingFace request: {requests.status_codes}, {response.text}")
+            return None
+
+        current_app.logger.info("Successfully called Hugging Face.")
+        return response.json()
+    except Exception as e:
+        current_app.logger.error(f"Failed to initiate HuggingFace call: {e}.")
+        return None
 
 
 def update_post_emotion(content, post_id) -> Post:
@@ -125,10 +175,9 @@ def update_post_emotion(content, post_id) -> Post:
             current_app.logger.error(f"Cannot find post {post_id}.")
             return False
 
-        current_app.logger.info(f"Attempt to call Hugging Face API for {post_instance}.")
-        emotions_output = query_hugging_face_llm(content)
-        if not emotions_output or len(emotions_output[0]) == 0:
-            current_app.logger.warning("No sentiments returned.")
+        emotions_output = call_hf_llm_api(content)
+        if not emotions_output or not emotions_output[0]:
+            current_app.logger.warning(f"No sentiments returned for post {post_id}.")
             return False
 
         for emotion_data in emotions_output[0]:
@@ -137,11 +186,12 @@ def update_post_emotion(content, post_id) -> Post:
             # Add emotion score to Post instance, otherwise update existing score.
             if emotion in SUPPORTED_EMOTIONS:
                 setattr(post_instance, f"{emotion}_value", score)
-                current_app.logger.info(f"Added {emotion} score {score} to {post_instance}.")
+                current_app.logger.info(f"Set {emotion} score {score} to {post_instance}.")
 
         db.session.commit()
         current_app.logger.info(f"Successfully updated post {post_id} with emotion scores.")
         return True
     except Exception as e:
-        current_app.logger.error(f"Error updating post emotion: {e}")
+        db.session.rollback()
+        current_app.logger.error(f"Failed to update post {post_id} with emotion scores: {e} ")
         return False
