@@ -3,7 +3,7 @@ from firebase_admin import credentials
 from flask import Flask
 from .extensions import db, migrate, ma
 from .config import Config
-from celery_app import make_celery
+from celery_factory import make_celery
 from app.celery_worker.tasks import register_tasks
 import logging
 from logging.handlers import RotatingFileHandler
