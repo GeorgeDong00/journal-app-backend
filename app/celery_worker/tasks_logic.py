@@ -1,9 +1,8 @@
 from datetime import datetime, timezone, timedelta
-from flask import current_app
 from openai import OpenAI
 import os
 import requests
-
+from . import logger
 from app.models import Post, WeeklyAdvice
 from app.extensions import db
 
@@ -52,7 +51,7 @@ def call_openai_advice_generation(posts):
         advice_content (str): Formatted string of user posts.
     """
     if not posts:
-        current_app.logger.warning("No posts provided for OpenAI advice generation.")
+        logger.warning("No posts provided for OpenAI advice generation.")
         return None
 
     prompt = """
@@ -94,11 +93,10 @@ def call_openai_advice_generation(posts):
 
         )
         advice_content = response.choices[0].message.content
-        current_app.logger.info(
-            f"OpenAI request {response._request_id} returned: {advice_content}")
+        logger.info(f"OpenAI request {response._request_id} returned: {advice_content}")
         return advice_content
     except Exception as e:
-        current_app.logger.error(f"OpenAI API call failed: {e}")
+        logger.error(f"OpenAI API call failed: {e}")
         return None
 
 
@@ -118,25 +116,23 @@ def generate_weekly_advice_for_user(user):
     # Retrieve the user's recent posts
     posts = retrieve_user_recent_posts(user.id, 604799)
     if not posts:
-        current_app.logger.warning(f"No posts found for user {user.id}. Skipping advice generation")
+        logger.warning(f"No posts found for user {user.id}. Skipping advice generation")
         return None
 
     advice_content = call_openai_advice_generation(posts)
     if not advice_content:
-        current_app.logger.warning("No advice content generated.")
+        logger.warning("No advice content generated.")
         return None
 
     try:
         new_advice = WeeklyAdvice(user_id=user.id, content=advice_content)
         db.session.add(new_advice)
         db.session.commit()
-        current_app.logger.info(f"Generated and stored new advice for {user}")
+        logger.info(f"Generated and stored new advice for {user}")
         return new_advice
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(
-            f"Failed to create new advice for {user} due to {e}."
-        )
+        logger.error(f"Failed to create new advice for {user} due to {e}.")
         return None
 
 # --------------------------------------------------
@@ -147,21 +143,21 @@ def call_hf_llm_api(content):
     headers = {"Authorization" : f"Bearer {os.environ.get('HUGGING_FACE_API_TOKEN')}"}
     payload = {"inputs": content}
 
-    current_app.logger.info("Attempt to call Hugging Face API.")
+    logger.info("Attempt to call Hugging Face API.")
     try:
         response = requests.post(os.environ.get("EMOTION_SCORE_API_URL"),
                                  headers=headers,
                                  json=payload)
 
         if response.status_code != 200:
-            current_app.logger.warning(
+            logger.warning(
                 f"Failed HuggingFace request: {requests.status_codes}, {response.text}")
             return None
 
-        current_app.logger.info("Successfully called Hugging Face.")
+        logger.info("Successfully called Hugging Face.")
         return response.json()
     except Exception as e:
-        current_app.logger.error(f"Failed to initiate HuggingFace call: {e}.")
+        logger.error(f"Failed to initiate HuggingFace call: {e}.")
         return None
 
 
@@ -172,12 +168,12 @@ def update_post_emotion(content, post_id) -> Post:
         post_instance = Post.query.get(post_id)
 
         if not post_instance:
-            current_app.logger.error(f"Cannot find post {post_id}.")
+            logger.error(f"Cannot find post {post_id}.")
             return False
 
         emotions_output = call_hf_llm_api(content)
         if not emotions_output or not emotions_output[0]:
-            current_app.logger.warning(f"No sentiments returned for post {post_id}.")
+            logger.warning(f"No sentiments returned for post {post_id}.")
             return False
 
         for emotion_data in emotions_output[0]:
@@ -186,12 +182,12 @@ def update_post_emotion(content, post_id) -> Post:
             # Add emotion score to Post instance, otherwise update existing score.
             if emotion in SUPPORTED_EMOTIONS:
                 setattr(post_instance, f"{emotion}_value", score)
-                current_app.logger.info(f"Set {emotion} score {score} to {post_instance}.")
+                logger.info(f"Set {emotion} score {score} to {post_instance}.")
 
         db.session.commit()
-        current_app.logger.info(f"Successfully updated post {post_id} with emotion scores.")
+        logger.info(f"Successfully updated post {post_id} with emotion scores.")
         return True
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Failed to update post {post_id} with emotion scores: {e} ")
+        logger.error(f"Failed to update post {post_id} with emotion scores: {e} ")
         return False

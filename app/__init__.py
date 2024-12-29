@@ -4,7 +4,7 @@ from flask import Flask
 from .extensions import db, migrate, ma
 from .config import Config
 from celery_app import make_celery
-from app.celery_tasks import register_tasks
+from app.celery_worker.tasks import register_tasks
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -30,7 +30,6 @@ def create_app(config_class=Config):
     # Initialize Celery for background task of generating weekly advice
     celery = make_celery(app)
     app.celery = celery
-    # Register tasks for workers
     register_tasks(celery)
 
     # Initialize Logging Directory and Configuration
