@@ -1,9 +1,8 @@
 from time import sleep
 from flask import current_app
-
-from app.celery_tasks_logic import (generate_weekly_advice_for_user,
-                                    update_post_emotion)
 from app.models import User
+from app.celery_worker.tasks_logic import (generate_weekly_advice_for_user,
+                                           update_post_emotion)
 
 
 def register_tasks(celery):
@@ -13,17 +12,23 @@ def register_tasks(celery):
     Parameters:
         celery (Celery): Instance to which tasks will be registered to.
     """
+    @celery.task(name="test_task")
+    def test_task():
+        print("Test task is running every 15 seconds!")
+        return "Test task completed."
 
     @celery.task(name="generate_all_users_weekly_advice")
     def generate_all_users_weekly_advice():
         """
-        Defines a Celery task that generates personalized weekly advice for each unqiue user.
+        Defines a Celery task that generates personalized weekly advice for each unique user.
 
         Returns:
-            str: Message indicating the completion status of the task.
+            boolean: Indicates the completion status of the task.
         """
         users = User.query.all()
-        current_app.logger.info(f"Celery Task: Generate weekly advices for {len(users)} users.")
+        current_app.logger.info(
+            f"Celery Task: Generate weekly advices for {len(users) if users is not None else 0} users."
+        )
 
         for user in users:
             try:
@@ -38,11 +43,6 @@ def register_tasks(celery):
                 current_app.logger.error(f"Error occured during advice generation: {e}")
                 return False
 
-    @celery.task(name="test_task")
-    def test_task():
-        print("Test task is running every 15 seconds!")
-        return "Test task completed."
-
     @celery.task(name="generate_content_emotional_scores")
     def generate_content_emotional_scores(content, post_id):
         """
@@ -54,11 +54,11 @@ def register_tasks(celery):
             post_content (str): Text content of a post.
 
         Returns:
-            status
-
+            boolean: Indicates the completion status of the task.
         """
         current_app.logger.info(f"Celery Task: Generate emotional scores for post {post_id}.")
         attempts = 2
+
         for i in range(attempts):
             try:
                 success = update_post_emotion(content, post_id)

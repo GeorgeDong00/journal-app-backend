@@ -1,9 +1,8 @@
 from datetime import datetime, timezone, timedelta
-from flask import current_app
 from openai import OpenAI
 import os
 import requests
-
+from flask import current_app
 from app.models import Post, WeeklyAdvice
 from app.extensions import db
 
