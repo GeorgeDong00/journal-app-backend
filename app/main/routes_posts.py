@@ -1,70 +1,13 @@
-from flask import g, jsonify, request, current_app
-import datetime
-import os
+from flask import current_app, g, jsonify, request
 from marshmallow import ValidationError
-import boto3
-
-from app.extensions import db
-from app.auth import firebase_auth_required
-from app.models import (User,
-                        Post, PostSchema, PostSchemaNoEmotions,
-                        WeeklyAdvice, WeeklyAdviceSchema)
 from . import main_bp
+from app.extensions import db
+from app.models import Post, PostSchema, PostSchemaNoEmotions
+from app.utils.auth import firebase_auth_required, get_or_create_user
 
 
-# Initialize S3 client to store profile picture
-s3 = boto3.client("s3")
-
-
-# --------------------------------------------------
-# Helper Functions
-# --------------------------------------------------
-def return_previous_sunday(date : datetime.date) -> datetime.date:
-    """Returns the datetime of latest previous (last week) Sunday before given
-    date. The datetime is set to midnight UTC and is used to retrieve the latest
-    week that has already passed.
-
-    Args:
-        date: UTC date to calculate the previous Sunday.
-
-    Returns:
-        datetime.date: Last week Sunday before the given date.
-    """
-    previous_sunday_date = date - datetime.timedelta(days=date.weekday() + 1)
-
-    # Combine previous Sunday date with midnight time and UTC timezone.
-    return datetime.datetime.combine(
-        previous_sunday_date,
-        datetime.time.min,
-        tzinfo=datetime.timezone.utc
-    )
-
-
-def get_or_create_user(firebase_uid: str) -> User:
-    """Retrieve or create a user from User table by Firebase UID.
-
-    Args:
-        firebase_uid: Firebase UID derived from request's header bearer token.
-
-    Returns:
-        user: Retrieved or newly created User instance.
-    """
-    user = User.query.filter_by(firebase_uid=firebase_uid).first()
-    current_app.logger.info(f"Retrieved {user} of Firebase UID {firebase_uid}.")
-
-    if not user:
-        user = User(firebase_uid=firebase_uid)
-        db.session.add(user)
-        db.session.commit()
-        current_app.logger.info(f"Created {user} of Firebase UID {firebase_uid}.")
-    return user
-
-
-# --------------------------------------------------
-# Post Routes
-# --------------------------------------------------
 @main_bp.route("/api/posts/", methods=["POST"])
-# @firebase_auth_required
+@firebase_auth_required
 def create_post():
     """Endpoint to create a new post for the authenticated user.
 
@@ -83,8 +26,8 @@ def create_post():
     """
     current_app.logger.info("Handling request to create a new post.")
     # Retrieve the user from User model from the Authorization bearer token.
-    # firebase_uid = g.user["uid"]
-    user = get_or_create_user("test=user")
+    firebase_uid = g.user["uid"]
+    user = get_or_create_user(firebase_uid)
 
     # Validate request 'content' and 'formatting' fields.
     data = request.get_json()
@@ -92,7 +35,6 @@ def create_post():
         # Empty 'formatting' data will be replaced with empty List.
         validated_data = PostSchema().load(data)
         current_app.logger.info("Validated request data.")
-
     except ValidationError as ve:
         current_app.logger.error(f"{ve.messages["content"][0]}")
         return jsonify({"error": f"Failed validation with {ve.messages['content'][0]}."}), 400
@@ -114,7 +56,6 @@ def create_post():
         return jsonify({"message": ("Post created successfully. "
                                     "Currently analyzing emotions—check back in one minute."),
                         "post": serialized_new_post}), 200
-
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Rollback occured since creation failed with {str(e)}.")
@@ -242,144 +183,3 @@ def get_post(post_id):
     serialized_post = PostSchema().dump(post_instance)
     return jsonify({"message": "Post retrieved successfully.",
                     "post": serialized_post}), 200
-
-
-# --------------------------------------------------
-# Weekly Advice Routes
-# --------------------------------------------------
-@main_bp.route("/api/weekly_advice/", methods=["GET"])
-@firebase_auth_required
-def get_weekly_advice():
-    """Endpoint to retrieve the latest weekly advice for the authenticated user.
-
-    Request Header:
-        Authorization (str): "Bearer <JWT_TOKEN>" (Firebase Auth Token)
-
-    Returns:
-        200 OK: Message and serialized latest weekly advice or empty List if no advice is found.
-
-    Raises:
-        401 Unauthorized: If the token is invalid or missing.
-    """
-    current_app.logger.info("Handling request to retrieve latest weekly advice.")
-    firebase_uid = g.user["uid"]
-    user = get_or_create_user(firebase_uid)
-
-    # Calculate the most recent Sunday date given the current date.
-    current_utc_date = datetime.now(datetime.timezone.utc).date()
-    latest_sunday = return_previous_sunday(current_utc_date)
-    current_app.logger(f"Returned latest Sunday date as {latest_sunday}.")
-
-    # Retrieve the latest weekly advice for the user.
-    advice = WeeklyAdvice.query.filter_by(user_id=user.id,
-                                          of_week=latest_sunday).first()
-    current_app.logger.info(f"Retrieved {advice}.")
-
-    # Empty dictionary is returned if no advice is found.
-    serialized_weekly_advice = WeeklyAdviceSchema().dump(advice)
-    return jsonify({"message": f"Week of {latest_sunday} has {len(advice)} advice.",
-                    "advice": serialized_weekly_advice}), 200
-
-
-# --------------------------------------------------
-# Profile Picture Routes
-# --------------------------------------------------
-@main_bp.route("/api/pfp/", methods=["GET"])
-@firebase_auth_required
-def get_profile_picture():
-    """Retrieve the S3 bucket URL of the authenticated user's profile picture.
-
-    Request Header:
-        Authorization (str): "Bearer <JWT_TOKEN>" (Firebase Auth Token)
-
-    Returns:
-        200 OK: Message and the S3 bucket URL to the profile picture.
-
-    Raises:
-        401 Unauthorized: If the token is invalid or missing.
-        404 Not Found: If the profile picture does not exist.
-    """
-    current_app.logger.info("Handling request to retrieve profile picture.")
-    firebase_uid = g.user["uid"]
-    user = get_or_create_user(firebase_uid)
-
-    try:
-        s3.head_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
-                       Key=f"{user.id}.png")
-    except Exception as e:
-        return jsonify({"error": "Profile picture cannot be found.",
-                        "message" : str(e)}), 404
-
-    return jsonify({
-        "message": "Retrieved profile picture S3 URL.",
-        "link": os.environ.get("S3_BUCKET_URL") + str(user.id) + ".png"}), 200
-
-
-@main_bp.route("/api/pfp/", methods=["DELETE"])
-@firebase_auth_required
-def delete_users_pfp():
-    """Endpoint to delete the authenticated user's profile picture.
-
-    Request Header:
-        Authorization (str): "Bearer <JWT_TOKEN>" (Firebase Auth Token)
-
-    Returns:
-        200 OK: Message indicating successful deletion of the profile picture.
-
-    Raises:
-        401 Unauthorized: If the token is invalid or missing.
-        404 Not Found: If the profile picture does not exist.
-    """
-    current_app.logger.info("Handling request to delete profile picture.")
-    firebase_uid = g.user["uid"]
-    user = get_or_create_user(firebase_uid)
-
-    try:
-        s3.delete_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
-                         Key=f"{user.id}.png")
-    except Exception as e:
-        return jsonify({"error": "Profile picture cannot be found.",
-                        "message": str(e)}), 404
-
-    return jsonify({"message": "Profile picture deleted successfully."}), 200
-
-
-@main_bp.route("/api/pfp/", methods=["POST"])
-@firebase_auth_required
-def upload_users_pfp():
-    """Endpoint to upload the authenticated user's profile picture to S3.
-
-    Request Body:
-        file (File): The profile picture file to be uploaded.
-
-    Returns:
-        201 Created: Message and S3 bucket URL of the uploaded profile picture.
-
-    Raises:
-        400 Bad Request: If no file is provided or upload fails.
-        401 Unauthorized: If the token is invalid or missing.
-        404 Not Found: If the profile picture cannot be found after upload.
-    """
-    current_app.logger.info("Handling request to upload profile picture.")
-    firebase_uid = g.user["uid"]
-    user = get_or_create_user(firebase_uid)
-
-    # Retrieve uploaded file from request "file" field.
-    file_data = request.files.get('ImageFile', None)
-    if file_data is None:
-        return jsonify({"error": "Request is missing image or `ImageFile` key."}), 400
-
-    s3.upload_fileobj(file_data,
-                      os.environ.get("S3_BUCKET_NAME"),
-                      f"{user.id}.png",
-                      ExtraArgs={"ACL": "public-read"})
-
-    try:
-        s3.head_object(Bucket=os.environ.get("S3_BUCKET_NAME"),
-                       Key=f"{user.id}.png")
-    except:
-        return jsonify({"error": "Profile picture cannot be found."}), 404
-
-    return jsonify({
-        "message": "Upload profile picture successfully.",
-        "link": os.environ.get("S3_BUCKET_URL") + str(user.id) + ".png"}), 201

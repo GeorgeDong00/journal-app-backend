@@ -1,5 +1,5 @@
 from time import sleep
-from . import logger
+from . import celery_logger as logger
 from app.models import User
 from app.celery_worker.tasks_logic import (generate_weekly_advice_for_user,
                                            update_post_emotion)

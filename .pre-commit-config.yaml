@@ -1,5 +1,7 @@
 # pre-commit install
 # pre-commit run <file or --all-files>
+
+exclude: ^.*__init__\.py$ # Needed to avoid circular dependencies.
 repos:
   - repo: https://github.com/hhatto/autopep8
     rev: v2.3.1
