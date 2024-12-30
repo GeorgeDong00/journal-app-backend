@@ -5,59 +5,15 @@ from marshmallow import ValidationError
 import boto3
 
 from app.extensions import db
-from app.auth import firebase_auth_required
-from app.models import (User,
-                        Post, PostSchema, PostSchemaNoEmotions,
+from app.utils.auth import firebase_auth_required, get_or_create_user
+from app.utils.advice import return_previous_sunday
+from app.models import (Post, PostSchema, PostSchemaNoEmotions,
                         WeeklyAdvice, WeeklyAdviceSchema)
 from . import main_bp
 
 
 # Initialize S3 client to store profile picture
 s3 = boto3.client("s3")
-
-
-# --------------------------------------------------
-# Helper Functions
-# --------------------------------------------------
-def return_previous_sunday(date : datetime.date) -> datetime.date:
-    """Returns the datetime of latest previous (last week) Sunday before given
-    date. The datetime is set to midnight UTC and is used to retrieve the latest
-    week that has already passed.
-
-    Args:
-        date: UTC date to calculate the previous Sunday.
-
-    Returns:
-        datetime.date: Last week Sunday before the given date.
-    """
-    previous_sunday_date = date - datetime.timedelta(days=date.weekday() + 1)
-
-    # Combine previous Sunday date with midnight time and UTC timezone.
-    return datetime.datetime.combine(
-        previous_sunday_date,
-        datetime.time.min,
-        tzinfo=datetime.timezone.utc
-    )
-
-
-def get_or_create_user(firebase_uid: str) -> User:
-    """Retrieve or create a user from User table by Firebase UID.
-
-    Args:
-        firebase_uid: Firebase UID derived from request's header bearer token.
-
-    Returns:
-        user: Retrieved or newly created User instance.
-    """
-    user = User.query.filter_by(firebase_uid=firebase_uid).first()
-    current_app.logger.info(f"Retrieved {user} of Firebase UID {firebase_uid}.")
-
-    if not user:
-        user = User(firebase_uid=firebase_uid)
-        db.session.add(user)
-        db.session.commit()
-        current_app.logger.info(f"Created {user} of Firebase UID {firebase_uid}.")
-    return user
 
 
 # --------------------------------------------------
@@ -83,8 +39,8 @@ def create_post():
     """
     current_app.logger.info("Handling request to create a new post.")
     # Retrieve the user from User model from the Authorization bearer token.
-    # firebase_uid = g.user["uid"]
-    user = get_or_create_user("test=user")
+    firebase_uid = g.user["uid"]
+    user = get_or_create_user(firebase_uid)
 
     # Validate request 'content' and 'formatting' fields.
     data = request.get_json()
