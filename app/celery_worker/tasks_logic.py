@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 from openai import OpenAI
 import os
 import requests
-from . import logger
+from . import celery_logger as logger
 from app.models import Post, WeeklyAdvice
 from app.extensions import db
 
