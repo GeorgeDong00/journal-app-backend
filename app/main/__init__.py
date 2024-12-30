@@ -2,4 +2,4 @@ from flask import Blueprint
 
 main_bp = Blueprint('main', __name__)
 
-from . import routes
+from . import routes_posts, routes_profile_picture, routes_advices
