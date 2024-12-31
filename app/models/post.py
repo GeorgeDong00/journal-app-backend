@@ -37,7 +37,7 @@ class Post(db.Model):
     neutral_value = db.Column(db.Float, nullable=False, default=0.0)
     sadness_value = db.Column(db.Float, nullable=False, default=0.0)
     surprise_value = db.Column(db.Float, nullable=False, default=0.0)
-    created_at = db.Column(db.DateTime, default=db.func.now())
+    created_at = db.Column(db.DateTime(timezone=True), default=db.func.now())
 
     def __repr__(self):
         return f"<Post {self.id} by User {self.user_id}>"
