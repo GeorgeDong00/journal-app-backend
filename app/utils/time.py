@@ -1,22 +1,14 @@
-import datetime
+from datetime import datetime, timezone, timedelta, date
 
 
-def return_previous_sunday(date : datetime.date) -> datetime.date:
-    """Returns the datetime of latest previous (last week) Sunday before given
-    date. The datetime is set to midnight UTC and is used to retrieve the latest
-    week that has already passed.
-
-    Args:
-        date: UTC date to calculate the previous Sunday.
+def latest_monday() -> date:
+    """Returns the beginning of the current week - Monday at midnight UTC. The date is used to map
+    a weekly advice and its corresponding week.
 
     Returns:
-        datetime.date: Last week Sunday before the given date.
+        monday_of_week (datetime.date): Current week's Monday 00:00 UTC.
     """
-    previous_sunday_date = date - datetime.timedelta(days=date.weekday() + 1)
-
-    # Combine previous Sunday date with midnight time and UTC timezone.
-    return datetime.datetime.combine(
-        previous_sunday_date,
-        datetime.time.min,
-        tzinfo=datetime.timezone.utc
-    )
+    # Get the current date and subtract the number of days to Monday.
+    current_date = datetime.now(timezone.utc).date()
+    days_to_subtract = current_date.weekday()
+    return current_date - timedelta(days_to_subtract)
