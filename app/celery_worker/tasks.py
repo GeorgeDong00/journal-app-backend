@@ -32,10 +32,10 @@ def register_tasks(celery):
 
         for user in users:
             try:
-                logger.info(f"Generating advice for user {user}.")
+                logger.info(f"Generating advice for {user}.")
                 advice = generate_weekly_advice_for_user(user)
                 if not advice:
-                    logger.warning(f"Failed to generate advice for User {user}.")
+                    logger.warning(f"Failed to generate advice for {user}.")
             except Exception as e:
                 logger.error(f"Error occured during advice generation: {e}")
                 return False
