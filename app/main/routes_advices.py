@@ -1,14 +1,13 @@
 from flask import current_app, g, jsonify
-from datetime import datetime
 from . import main_bp
 from app.models import WeeklyAdvice, WeeklyAdviceSchema
 from app.utils.auth import firebase_auth_required, get_or_create_user
-from app.utils.time import return_previous_sunday
+from app.utils.time import latest_monday
 
 
-@main_bp.route("/api/weekly_advice/", methods=["GET"])
+@main_bp.route("/api/weekly_advice/latest", methods=["GET"])
 @firebase_auth_required
-def get_weekly_advice():
+def get_latest_weekly_advice():
     """Endpoint to retrieve the latest weekly advice for the authenticated user.
 
     Request Header:
@@ -24,17 +23,14 @@ def get_weekly_advice():
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
-    # Calculate the most recent Sunday date given the current date.
-    current_utc_date = datetime.now(datetime.timezone.utc).date()
-    latest_sunday = return_previous_sunday(current_utc_date)
-    current_app.logger(f"Returned latest Sunday date as {latest_sunday}.")
+    # Calculate the Monday of the current week.
+    start_of_current_week = latest_monday()
+    current_app.logger.info(f"Retrieving {user} advice for week of {start_of_current_week}.")
 
     # Retrieve the latest weekly advice for the user.
-    advice = WeeklyAdvice.query.filter_by(user_id=user.id,
-                                          of_week=latest_sunday).first()
-    current_app.logger.info(f"Retrieved {advice}.")
+    advice = WeeklyAdvice.query.filter_by(user_id=user.id, of_week=start_of_current_week).all()
+    current_app.logger.info("Successfully retrieved latest advice.")
 
-    # Empty dictionary is returned if no advice is found.
-    serialized_weekly_advice = WeeklyAdviceSchema().dump(advice)
-    return jsonify({"message": f"Week of {latest_sunday} has {len(advice)} advice.",
+    serialized_weekly_advice = WeeklyAdviceSchema(many=True).dump(advice)
+    return jsonify({"message": f"Week of {start_of_current_week} has {len(advice)} advice.",
                     "advice": serialized_weekly_advice}), 200
