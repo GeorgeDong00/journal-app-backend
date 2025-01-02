@@ -1,4 +1,4 @@
-from app.logging_config import configure_worker_logging
+from app.logger import configure_worker_logging
 
 celery_logger = configure_worker_logging()
-celery_logger.info("Initialized Celery worker logging.")
+celery_logger.info("Created logger for Celery worker.")

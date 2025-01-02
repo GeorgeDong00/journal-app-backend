@@ -29,7 +29,7 @@ def configure_application_logging(app, log_file="logs/application.log"):
 
 
 def configure_worker_logging(log_file="logs/worker.log", logger_name="celery_worker"):
-    """Configure logging for the Celery worker."""
+    """Configure and create logger for Celery workers."""
     create_log_directory()
 
     logger = logging.getLogger(logger_name)
