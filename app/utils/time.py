@@ -1,6 +1,5 @@
 from datetime import datetime, timezone, timedelta, date
 
-
 def latest_monday() -> date:
     """Returns the beginning of the current week - Monday at midnight UTC. The date is used to map
     a weekly advice and its corresponding week.
