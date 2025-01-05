@@ -27,3 +27,21 @@ def raise_http_exception(exception_class, failure_reason="", exception_message="
     }
 
     raise exc
+
+class DependencyException(Exception):
+    """
+    An exception indicating that some external dependency failed or returned invalid response (e.g., request to
+    HuggingFace or OpenAI APIs).
+    """
+
+    def __init__(self, message="A dependency failed."):
+        super().__init__(message)
+
+class UserAdviceException(Exception):
+    """
+    An exception indicating an user-scope problem during advice generation (i.e the user
+    has already generated advice for the latest week, etc.) and will be skipped.
+    """
+
+    def __init__(self, message="User does not meet necessary requirement for advice generation."):
+        super().__init__(message)
