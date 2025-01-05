@@ -30,7 +30,7 @@ def validation_exception_handler(ve):
     Returns:
         JSON: A JSON response with 400 (BadRequest) status.
     """
-    ve_description = ve.messages['content'][0]
+    ve_description = ve.messages
     response = {
         "error": "Invalid or malformed request.",
         "message": ve_description,
