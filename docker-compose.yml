@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:14.15
+    container_name: postgres_db
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: rabbitmq_broker
+    environment:
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
+      - BROKER_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq_broker:5672
+      - RESULT_BACKEND=rpc://
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    # 15672 is the management UI for RabbitMQ
+
+  flask_api:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: flask_app
+    depends_on:
+      - rabbitmq
+      - postgres
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    command: ["python3", "-m", "flask", "run"]  # runs your Flask server on port 8000
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: celery_worker
+    depends_on:
+      - rabbitmq
+      - postgres
+    env_file:
+      - .env
+    command: ["celery", "-A", "run.celery", "worker", "--loglevel=info"]
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: celery_beat
+    depends_on:
+      - rabbitmq
+      - postgres
+    env_file:
+      - .env
+    command: ["celery", "-A", "run.celery.celery", "beat", "--loglevel=info"]
+
+volumes:
+  pgdata:
