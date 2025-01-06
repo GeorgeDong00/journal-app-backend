@@ -1,0 +1,24 @@
+# ./Dockerfile.web
+FROM python:3.12.7
+
+# Create a working directory
+WORKDIR /app
+
+# Install system dependencies (if needed)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy your requirements
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy your application code
+COPY . /app
+
+# Expose the port Flask will run on
+EXPOSE 8000
+
+# Finally, run the Flask app
+CMD [ "python", "run.py" ]
