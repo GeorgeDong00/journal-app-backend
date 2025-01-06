@@ -1,16 +1,17 @@
-# ./Dockerfile.celery
 FROM python:3.12.7
 
+# Set working directory to /app
 WORKDIR /app
 
+# Update and install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
+ # Install Python dependencies
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code to working directory
 COPY . /app
-
-CMD [ "celery", "--help" ]
