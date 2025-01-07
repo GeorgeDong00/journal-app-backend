@@ -1,0 +1,9 @@
+__pycache__
+venv
+*.pyc
+.env
+.git
+.gitignore
+Dockerfile*
+docker-compose.yml
+app/serviceAccountKey.json

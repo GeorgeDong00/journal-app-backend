@@ -1,4 +1,5 @@
 from flask import Flask
+import json
 import firebase_admin
 from firebase_admin import credentials
 from .extensions import db, migrate, ma
@@ -12,8 +13,10 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    # Register Firebase Admin SDK to verify token
-    cred = credentials.Certificate("app/serviceAccountKey.json")
+    # Load Firebase Account Key to enable token verification
+    cred_json = app.config["FIREBASE_CREDENTIAL"]
+    parsed = json.loads(cred_json)
+    cred = credentials.Certificate(parsed)
     firebase_admin.initialize_app(cred)
 
     # Register postgresql database and marshmallow schemas

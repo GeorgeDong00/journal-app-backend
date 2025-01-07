@@ -16,6 +16,12 @@ def firebase_auth_required(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check whether if Flask application has auth disabled (for test or demo purposes)
+        if current_app.config.get("AUTH_DISABLED"):
+            current_app.logger.warning("Skipping Firebase auth for testing/demo. Logged into 'demo-user' account.")
+            g.user = {"uid": "demo-user"}
+            return f(*args, **kwargs)
+
         try:
             auth_header = request.headers.get("Authorization", "")
             if not auth_header or not auth_header.startswith("Bearer "):

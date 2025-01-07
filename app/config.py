@@ -4,19 +4,21 @@ from datetime import timedelta
 # Get the base directory of the current file
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-
 class Config:
-    # Secret key for CSRF protection
+    # Flask and Auth Security
     SECRET_KEY = os.environ.get("SECRET_KEY")
+    AUTH_DISABLED = os.environ.get("AUTH_DISABLED", False)
+    FIREBASE_CREDENTIAL = os.environ.get("FIREBASE_CREDENTIAL", "")
 
     # PostgreSQL Database
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Celery Configuration
-    BROKER_URL = os.environ.get("BROKER_URL")
-    RESULT_BACKEND = os.environ.get("RESULT_BACKEND")
+    # RabbitMQ for enqueueing Celery tasks
+    BROKER_URL = os.environ.get("RABBITMQ_BROKER_URL")
+    RESULT_BACKEND = os.environ.get("RABBITMQ_RESULT_BACKEND")
 
+    # Celery Beat Schedule for Periodic Tasks
     CELERY_BEAT_SCHEDULE = {
         "weekly-advice-generation": {
             "task": "enqueue_all_users_advice_generation",
