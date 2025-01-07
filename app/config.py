@@ -19,7 +19,7 @@ class Config:
 
     CELERY_BEAT_SCHEDULE = {
         "weekly-advice-generation": {
-            "task": "generate_all_users_weekly_advice",
+            "task": "enqueue_all_users_advice_generation",
             "schedule": timedelta(seconds=60),
             "args": (),
         },
