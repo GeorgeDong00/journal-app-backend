@@ -5,32 +5,35 @@ from app.utils.auth import firebase_auth_required, get_or_create_user
 from app.utils.time import latest_monday
 
 
-@main_bp.route("/api/weekly_advice/latest", methods=["GET"])
+@main_bp.route("/api/advice/latest", methods=["GET"])
 @firebase_auth_required
 def get_latest_weekly_advice():
-    """Endpoint to retrieve the latest weekly advice for the authenticated user.
-
-    Request Header:
-        Authorization (str): "Bearer <JWT_TOKEN>" (Firebase Auth Token)
-
-    Returns:
-        200 OK: Message and serialized latest weekly advice or empty List if no advice is found.
-
-    Raises:
-        401 Unauthorized: If the token is invalid or missing.
-    """
+    """Endpoint to retrieve the latest weekly advice for the authenticated user."""
     current_app.logger.info("Handling request to retrieve latest weekly advice.")
     firebase_uid = g.user["uid"]
     user = get_or_create_user(firebase_uid)
 
     # Calculate the Monday of the current week.
     start_of_current_week = latest_monday()
-    current_app.logger.info(f"Retrieving {user} advice for week of {start_of_current_week}.")
+    current_app.logger.info(f"This Monday date is {start_of_current_week}.")
 
-    # Retrieve the latest weekly advice for the user.
-    advice = WeeklyAdvice.query.filter_by(user_id=user.id, of_week=start_of_current_week).all()
-    current_app.logger.info("Successfully retrieved latest advice.")
+    try:
+        # Retrieve the latest weekly advice for the user.
+        advice = WeeklyAdvice.query.filter_by(user_id=user.id,
+                                              of_week=start_of_current_week).first()
 
-    serialized_weekly_advice = WeeklyAdviceSchema(many=True).dump(advice)
-    return jsonify({"message": f"Week of {start_of_current_week} has {len(advice)} advice.",
-                    "advice": serialized_weekly_advice}), 200
+        # May be possible that the advice generation has occur yet for the current week.
+        if not advice:
+            current_app.logger.warning(f"User {user.id} has no advice from latest week {start_of_current_week}.")
+        else:
+            current_app.logger.info(f"Retrieved latest advice from week of {advice.of_week}.")
+
+        serialized_advice = WeeklyAdviceSchema().dump(advice)
+        return jsonify({
+            "message": f"Successfully retrieved latest advice for week of {start_of_current_week}.",
+            "advice": serialized_advice
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to retrieve latest advice for week of {start_of_current_week}: {e}")
+        raise e
