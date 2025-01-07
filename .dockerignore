@@ -6,3 +6,4 @@ venv
 .gitignore
 Dockerfile*
 docker-compose.yml
+app/serviceAccountKey.json
