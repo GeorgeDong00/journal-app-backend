@@ -26,3 +26,10 @@ class Config:
             "args": (),
         },
     }
+
+    # AWS S3 Bucket for Profile Pictures
+    AWS_REGION = os.environ.get("AWS_REGION", None)
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", None)
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+    S3_PROFILE_PIC_BUCKET = os.environ.get("S3_PROFILE_PIC_BUCKET", None)
+    S3_PROFILE_PIC_BUCKET_URL = os.environ.get("S3_PROFILE_PIC_BUCKET_URL", None)
