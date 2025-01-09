@@ -1,7 +1,7 @@
 from flask import request, g, current_app
 from functools import wraps
 from firebase_admin import auth
-from werkzeug.exceptions import BadRequest, Unauthorized
+from werkzeug.exceptions import BadRequest, Unauthorized, InternalServerError
 from app.models import User
 from app.extensions import db
 from app.utils.exceptions import raise_http_exception
@@ -16,12 +16,6 @@ def firebase_auth_required(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check whether if Flask application has auth disabled (for test or demo purposes)
-        if current_app.config.get("AUTH_DISABLED"):
-            current_app.logger.warning("Skipping Firebase auth for testing/demo. Logged into 'demo-user' account.")
-            g.user = {"uid": "demo-user"}
-            return f(*args, **kwargs)
-
         try:
             auth_header = request.headers.get("Authorization", "")
             if not auth_header or not auth_header.startswith("Bearer "):
@@ -73,4 +67,4 @@ def get_or_create_user(firebase_uid: str) -> User:
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to retrieve or create user: {e}")
-        raise e
+        raise_http_exception(InternalServerError, "Failed to retrieve user data.", str(e))
