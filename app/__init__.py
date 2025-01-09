@@ -2,7 +2,7 @@ from flask import Flask
 import json
 import firebase_admin
 from firebase_admin import credentials
-from .extensions import db, migrate, ma
+from .extensions import db, migrate, ma, init_s3
 from .config import Config
 from .logger import configure_application_logging
 from celery_factory import make_celery
@@ -23,6 +23,9 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     ma.init_app(app)
+
+    # Register S3 client for profile picture storage
+    init_s3(app)
 
     # Register Blueprints
     app.register_blueprint(main_bp)
