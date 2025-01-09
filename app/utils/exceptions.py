@@ -16,14 +16,14 @@ def raise_http_exception(exception_class, failure_reason="", exception_message="
         HTTPException: The specified or default HTTPException with added data.
     """
     # Validates the existence of HTTPException subclass.
-    http_exc_subclass = InternalServerError("Modified exception is missing a HTTPException subclass.")
     if issubclass(exception_class, HTTPException):
-        http_exc_subclass = exception_class
+        exc = exception_class(description=exception_message or exception_class.description)
+    else:
+        exc = InternalServerError(description=exception_message or "An internal server error occurred.")
 
-    # Create the HTTPException instance with .
-    exc = http_exc_subclass(description=exception_message)
+    # Attach additional data for error handler
     exc.data = {
-        "error": failure_reason
+        "error": failure_reason or exc.name
     }
 
     raise exc

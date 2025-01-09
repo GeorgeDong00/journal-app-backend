@@ -15,7 +15,7 @@ def http_exception_handler(exc):
         JSON: A JSON response with HTTP status
     """
     response = {
-        "error": exc.data.get("error", "Invalid modified HTTPException."),
+        "error": exc.data.get("error"),
         "message": exc.description,
     }
     return jsonify(response), exc.code

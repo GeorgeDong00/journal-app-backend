@@ -1,5 +1,5 @@
 import os
-from datetime import timedelta
+from celery.schedules import crontab
 
 # Get the base directory of the current file
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -7,7 +7,6 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 class Config:
     # Flask and Auth Security
     SECRET_KEY = os.environ.get("SECRET_KEY")
-    AUTH_DISABLED = os.environ.get("AUTH_DISABLED", False)
     FIREBASE_CREDENTIAL = os.environ.get("FIREBASE_CREDENTIAL", "")
 
     # PostgreSQL Database
@@ -18,11 +17,11 @@ class Config:
     BROKER_URL = os.environ.get("RABBITMQ_BROKER_URL")
     RESULT_BACKEND = os.environ.get("RABBITMQ_RESULT_BACKEND")
 
-    # Celery Beat Schedule for Periodic Tasks
+    # Celery Beat Schedule for Periodic Tasks (UTC)
     CELERY_BEAT_SCHEDULE = {
         "weekly-advice-generation": {
             "task": "enqueue_all_users_advice_generation",
-            "schedule": timedelta(seconds=60),
+            "schedule": crontab(hour=12, minute=0, day_of_week='sunday'),
             "args": (),
         },
     }
