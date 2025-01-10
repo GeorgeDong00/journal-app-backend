@@ -57,7 +57,8 @@ services:
       - postgres
     env_file:
       - .env
-    command: ["celery", "-A", "run.celery", "worker", "--loglevel=info"]
+    # Worker instance processes one tasks at a time -> max concurrent job = (num of workers * concurrency rate) 
+    command: ["celery", "-A", "run.celery", "worker", "--loglevel=info", "--concurrency=1"]
 
   celery_beat:
     build:
