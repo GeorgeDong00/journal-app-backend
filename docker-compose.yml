@@ -51,7 +51,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.celery
-    container_name: celery_worker
     depends_on:
       - rabbitmq
       - postgres
