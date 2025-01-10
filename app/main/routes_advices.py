@@ -5,7 +5,7 @@ from app.utils.auth import firebase_auth_required, get_or_create_user
 from app.utils.time import latest_monday
 
 
-@main_bp.route("/api/advice/latest", methods=["GET"])
+@main_bp.route("/api/advice/latest/", methods=["GET"])
 @firebase_auth_required
 def get_latest_weekly_advice():
     """Endpoint to retrieve the latest weekly advice for the authenticated user."""

@@ -14,8 +14,12 @@ def http_exception_handler(exc):
     Returns:
         JSON: A JSON response with HTTP status
     """
+    # Some exception instance (e.g InternalServerError) won't have data field.
+    custom_data = getattr(exc, "data", {})
+
+    # Use the custom data if available, otherwise use exception name.
     response = {
-        "error": exc.data.get("error"),
+        "error": custom_data.get("error", exc.name),
         "message": exc.description,
     }
     return jsonify(response), exc.code
