@@ -8,7 +8,7 @@ from app.utils.auth import firebase_auth_required, get_or_create_user
 from app.utils.exceptions import raise_http_exception
 
 
-@main_bp.route("/api/post/", methods=["POST"])
+@main_bp.route("/api/posts/", methods=["POST"])
 @firebase_auth_required
 def create_post():
     """Endpoint to create a new post for the authenticated user."""
@@ -52,7 +52,7 @@ def create_post():
         raise e
 
 
-@main_bp.route("/api/post/<int:post_id>/", methods=["PUT"])
+@main_bp.route("/api/posts/<int:post_id>/", methods=["PUT"])
 @firebase_auth_required
 def update_post(post_id):
     """Endpoint to update a post made by the authenticated user."""
@@ -131,7 +131,7 @@ def get_posts():
         raise e
 
 
-@main_bp.route("/api/post/<int:post_id>/", methods=["GET"])
+@main_bp.route("/api/posts/<int:post_id>/", methods=["GET"])
 @firebase_auth_required
 def get_post(post_id):
     """Endpoint to retrieve a specific post made by the authenticated user."""
