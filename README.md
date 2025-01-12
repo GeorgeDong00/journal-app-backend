@@ -2,7 +2,7 @@
 
 🥇  **Best Overall/1st Place Team** @ **Cornell AppDev Hackathon (Fall 2024)** out of 30+ teams and 140+ participants.
 
-🚀 A fully functional [prototype](http://34.21.62.193/api/advice/latest/) of TechTive backend has been successfully deployed and is accessible!
+🚀 A fully functional [prototype](http://34.21.62.193/api/advices/latest/) of TechTive backend has been successfully deployed and is accessible!
 
 🔨 **Backend Developers**: George Dong | Abrar Amin
 
