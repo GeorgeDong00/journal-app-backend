@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from openai import OpenAI
 import os
+import json
 import requests
 from . import celery_logger as logger
 from app.models import Post, WeeklyAdvice
@@ -97,7 +98,11 @@ def call_openai_advice_generation(posts):
         )
         advice_content = response.choices[0].message.content
         logger.info(f"OpenAI response {response._request_id} returned an advice: {advice_content}")
-        return advice_content
+
+        # Parse and return the advice content as a JSON.
+        sanitized_advice = advice_content.replace("```json", "").replace("```", "").strip()
+        new_advice = json.loads(sanitized_advice)
+        return new_advice
 
     except Exception as e:
         logger.error(f"An error occured during OpenAI API call: {e}")
