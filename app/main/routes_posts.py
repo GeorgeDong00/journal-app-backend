@@ -159,3 +159,40 @@ def get_post(post_id):
     except Exception as e:
         current_app.logger.error(f"Failed to retrieve post {post_id}: {e}.")
         raise e
+
+
+@main_bp.route("/api/posts/<int:post_id>/", methods=["DELETE"])
+@firebase_auth_required
+def delete_post(post_id):
+    """Endpoint to delete a specific post made by the authenticated user."""
+    current_app.logger.info(f"Handling request to delete post instance {post_id}.")
+    firebase_uid = g.user["uid"]
+    user = get_or_create_user(firebase_uid)
+
+    try:
+        # Retrieve the post instance to be deleted, and validate ownership.
+        delete_instance = Post.query.filter_by(id=post_id,
+                                               user_id=user.id).first()
+        if not delete_instance:
+            raise LookupError(f"User is not associated with a post {post_id}.")
+
+        # Delete the post instance from the database.
+        current_app.logger.info(f"Deleting post {delete_instance.id} by user {user.id}.")
+        db.session.delete(delete_instance)
+        db.session.commit()
+        current_app.logger.info(f"Deleted post {delete_instance.id} from database.")
+
+        # Serialize the deleted post instance for response.
+        serialized_deleted_post = PostSchema().dump(delete_instance)
+        return jsonify({
+            "message": f"Successfully deleted post {post_id}.",
+            "post": serialized_deleted_post
+        }), 200
+
+    except LookupError as le:
+        current_app.logger.error(f"Failed to delete requested post: {le}")
+        raise_http_exception(NotFound, f"Post {post_id} cannot be found.", str(le))
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to delete post {post_id}: {e}.")
+        raise e
