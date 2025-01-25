@@ -33,9 +33,11 @@ def get_latest_weekly_advice(date_of):
 
     current_app.logger.info(f"The Monday date is {start_of_week}.")
     try:
-        # Retrieve the latest weekly advice for the user.
-        advice = WeeklyAdvice.query.filter_by(user_id=user.id,
-                                              of_week=start_of_week).first()
+        # Retrieve the latest weekly advice after sorting by creation date descending.
+        advice = WeeklyAdvice.query \
+            .filter_by(user_id=user.id, of_week=start_of_week) \
+            .order_by(WeeklyAdvice.created_at.desc()) \
+            .first()
 
         # May be possible that the advice generation has occur yet for the current week.
         if not advice:
