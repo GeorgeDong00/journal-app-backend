@@ -1,232 +1,215 @@
-# TechTive
+# TechTive Backend
 
-🥇  **Best Overall/1st Place Team** @ **Cornell AppDev Hackathon (Fall 2024)** out of 30+ teams and 140+ participants.
+TechTive is an AI-assisted journaling app built during the Cornell AppDev Hackathon in Fall 2024, where the project placed 1st overall. This repository contains the Flask backend used by the iOS app for authentication, journal storage, AI-powered emotion scoring, weekly advice generation, and profile picture storage.
 
-🚀 A fully functional [prototype](http://34.21.62.193/api/advices/latest/) of TechTive backend has been successfully deployed and is accessible!
+- Backend developers: George Dong, Abrar Amin
+- Frontend developers: Jiwon Jeong, Keya Aggarwal
 
-🔨 **Backend Developers**: George Dong | Abrar Amin
+## Contents
 
-📱 [**Frontend Developers and Repository**](https://github.com/JiwonJeong414/TechTive-iOS/): Jiwon Jeong | Keya Aggarwal
+- [Overview](#overview)
+- [Technical Highlights](#technical-highlights)
+- [AI Features](#ai-features)
+- [System Design](#system-design)
+- [Deployment](#deployment)
+- [Tech Stack](#tech-stack)
+- [API Reference](#api-reference)
+- [Running Locally](#running-locally)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
 
-## Table of Contents
-- [Application Description](#application-description)
-- [Tech Stack and Tools](#tech-stack-and-tools)
-- [System Design Overview](#system-design-overview)
-    - [Modular Design Pattern](#modular-design-pattern)
-    - [Asynchronous Parallel Processes](#asynchronous-parallel-processes)
-    - [Scalable Workers](#scalable-workers)
-- [API Endpoints Overview](#api-endpoints-overview)
-- [Appendix](#appendix)
+## Overview
 
-## Application Description
-TechTive is a journaling platform designed to help users gain data-driven insights into their thoughts and emotions. The app uses sentiment analysis to evaluate and score journal entries, providing users a better understanding of their emotional state across various categories. At the end of each week, TechTive uses the user's weekly journaling patterns to deliver personalized advice in the form of a riddle to help them prepare for the upcoming week.
+- Frontend repository: [TechTive iOS](https://github.com/JiwonJeong414/TechTive-iOS/)
+- Demo backend endpoint used during the hackathon: [latest weekly advice](http://34.21.62.193/api/advices/latest/)
 
-## Tech Stack and Tools
-- **Nginx** – Reverse proxy for routing incoming requests to the Flask service.  
-- **Firebase** – Provides user authentication via Bearer tokens.  
-- **Flask (with Blueprints)** – Main server-side framework for routing and business logic.  
-- **SQLAlchemy & PostgreSQL** – ORM and a relational database for storing users, posts, and weekly advice.  
-- **RabbitMQ** – Message broker for queuing background tasks.  
-- **Celery** – Task queue library used to create background jobs for parallel processing.  
-- **Celery Beat** – Job scheduler that periodically enqueues batch of tasks (e.g., generating weekly advice).  
+TechTive helps users reflect on their journal entries by combining normal journaling features with AI-generated feedback. The backend provides the API and background processing needed to support that experience from the mobile app.
 
-## System Design Overview
-<img src="https://drive.google.com/uc?export=view&id=1A1pdA6KfASGWZtRWAHGzh8L7jysfTyhQ" alt="System Design Diagram" width="1000" width="1000">
+## Technical Highlights
 
-### Modular Design Pattern
-- The application uses Flask Application Factory and Extensions to encapsulate the creation and configuration of different services, allowing for the separation of concerns.
-- Long-running tasks—like generating weekly advice or computing emotional scores—are handed off to Celery workers, allowing the main Flask service to respond quickly.  
+- Built a Flask API for authenticated journal entry CRUD, weekly advice lookup, and profile picture management.
+- Integrated Firebase token verification so each request is tied to the correct user.
+- Used PostgreSQL with SQLAlchemy models for users, journal entries, emotion scores, and weekly advice.
+- Moved slower AI calls into Celery workers with RabbitMQ, keeping user-facing API requests responsive.
+- Added scheduled weekly advice generation with Celery Beat.
+- Integrated Hugging Face for emotion classification and OpenAI for structured advice generation.
+- Stored profile pictures in AWS S3 and returned public profile picture URLs through the API.
+- Deployed the Docker Compose backend stack on a Google Cloud VM for the hackathon demo.
 
-### Asynchronous Parallel Processes
-- Tasks are placed on a RabbitMQ messaging queue and processed by multiple Celery workers running concurrently.
-- Celery Beat triggers a batch advice-generation job every Sunday at 12:00 UTC. Each user’s weekly advice generation is executed in its Celery task to avoid bottlenecks.
-- Automatic retries and error handling ensure external API failures (e.g., OpenAI, Hugging Face) do not interrupt the main application flow.
+## AI Features
 
-### Scalable Workers
-- Each worker can be assigned at most one tasks by default (configurable via the --concurrency flag).
-- Additional worker containers can be spun up easily through Docker Compose.
-- Future releases will focus on migrating containers to separate computing instances and using orchestrators to make this architecture highly scalable.
+The project uses AI in two parts of the product.
 
-## API Endpoints Overview
+**Emotion scoring:** When a user creates or updates a journal entry, Flask saves the entry first and queues a Celery task. The worker sends the journal text to a Hugging Face emotion classification model and stores scores for anger, disgust, fear, joy, neutral, sadness, and surprise.
 
-All endpoints require a valid Firebase Bearer token in the `Authorization` header. Below is a high-level overview of the main endpoints. 
+**Weekly advice:** Celery Beat runs a scheduled job every Sunday at 12:00 UTC. The job queues one task per user, gathers that user's entries from the current week, and sends them to the OpenAI API. The response is stored as structured JSON with a riddle, answer, and short advice message.
 
-1. **Posts**  
-   - **`POST /api/post/`**: Create a new journal post.  
-   - **`PUT /api/post/<post_id>/`**: Update an existing post.  
-   - **`GET /api/posts/`**: Retrieve all posts for the authenticated user.  
-   - **`GET /api/post/<post_id>/`**: Retrieve a single post by ID.  
+Beyond the model calls, the backend handles prompt formatting, JSON parsing, supported-label checks for emotion scores, retries for third-party API failures, and guards against duplicate weekly advice.
 
-2. **Weekly Advice**  
-   - **`GET /api/advice/latest/`**: Fetch the latest riddle-like advice for the current week.  
+## System Design
 
-3. **Profile Picture**  
-   - **`POST /api/pfp/`**: Upload or overwrite the user’s profile picture in S3.  
-   - **`GET /api/pfp/`**: Retrieve the current user’s profile picture URL.  
-   - **`DELETE /api/pfp/`**: Delete the user’s profile picture from S3.  
+Client requests go through Nginx to the Flask API. Flask handles authentication, request validation, and database writes. RabbitMQ queues longer AI jobs, and Celery workers process those jobs outside the main request cycle. PostgreSQL stores application data, and S3 stores profile pictures.
 
+<img src="https://drive.google.com/uc?export=view&id=1A1pdA6KfASGWZtRWAHGzh8L7jysfTyhQ" alt="TechTive backend architecture diagram" width="1000">
 
-## Appendix
+### Request Flow
 
-### I. Authentication
-All API requests must have a valid **Firebase Bearer token** to be passed in the `Authorization` header as `Bearer <TOKEN>`. The API will return an appropriate HTTP error if the token is invalid or missing. 
+1. The iOS app sends an authenticated API request.
+2. Flask verifies the Firebase token and handles the request.
+3. Journal data is saved in PostgreSQL.
+4. AI work is queued in RabbitMQ.
+5. Celery workers call the external AI service and update the database when results are ready.
 
-```
+## Deployment
+
+For the hackathon demo, the backend was deployed on a Google Cloud VM instance. The VM ran the backend stack with Docker Compose, exposed Nginx publicly, and forwarded traffic to the Flask app running behind Gunicorn.
+
+The VM deployment used the same core services as the local environment:
+
+- Flask API served with Gunicorn
+- Nginx reverse proxy
+- PostgreSQL database
+- RabbitMQ message broker
+- Celery worker for AI background jobs
+- Celery Beat scheduler for weekly advice generation
+
+This was a single-VM prototype deployment, not a large production system. It gave the team a public backend endpoint for the iOS app while keeping the service setup close to the local Docker environment.
+
+## Tech Stack
+
+| Area | Tools |
+| --- | --- |
+| API | Flask, Gunicorn, Nginx |
+| Authentication | Firebase Admin SDK |
+| Database | PostgreSQL, SQLAlchemy, Flask-Migrate |
+| Validation and Serialization | Marshmallow |
+| Background Jobs | Celery, Celery Beat, RabbitMQ |
+| AI Services | OpenAI API, Hugging Face Inference API |
+| File Storage | AWS S3 |
+| Containerization | Docker Compose |
+| Cloud Deployment | Google Cloud VM |
+
+## API Reference
+
+All endpoints require this header:
+
+```text
 Authorization: Bearer <Firebase_ID_Token>
 ```
 
-### II. Journal Entry/Post
+### Journal Entries
 
-#### a. Retrieve a Specific Entry
-- **GET** `/api/posts/{id}/`
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
-  
-  <STORED ENTRY WITH FORMAT AND PREDICTED EMOTION DATA, EXAMPLE BELOW>
-  {
-    "message": "Successfully retrieved post ID {id}.",
-    "post": {
-      "id": <ID>,
-      "user_id": <STORED USER ID FOR ENTRY WITH ID {id}>,
-      "content": "String text from journal entry.",
-      "formatting": [
-        {"range": {"location": 4, "length": 5}, "type": "bold"},
-        <STORED FORMAT DATA OF CHAR WIDTH AND FORMAT TYPE FOR ENTRY WITH ID {id}>
-      ],
-      "joy_value": 0.98,
-      "neutral_value": 0.01,
-      "sadness_value": 0.004,
-      ... other emotion categories and values ...
-      "created_at": "2025-01-06T13:37:29.534964+00:00
-    }
-  }
-  ```
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/posts/` | Create a journal entry. |
+| `GET` | `/api/posts/` | Get all entries for the authenticated user. |
+| `GET` | `/api/posts/<post_id>/` | Get one entry owned by the authenticated user. |
+| `PUT` | `/api/posts/<post_id>/` | Update one entry owned by the authenticated user. |
+| `DELETE` | `/api/posts/<post_id>/` | Delete one entry owned by the authenticated user. |
 
-#### b. Create a New Entry
-- **POST** `/api/posts/`
-- **Request Body**
-  ```
-  {
-    "content": "String text from journal entry.",
-    "formatting": <USER INPUT (OPTIONAL JSON)>
-  }
-  ```
-- **Response**
-  ```
-  <HTTP STATUS CODE 201>
-  
-  <CREATED POST WITHOUT EMOTION SCORES, EXAMPLE BELOW>
-  {
-    "message": "Successfully created new post. Check back in a minute for emotional score.",
-    "post": {
-      "id": <ID>,
-      "user_id": <STORED USER ID FOR CREATED ENTRY>,
-      "content": "String text from journal entry.",
-      "formatting": <USER INPUT, OTHERWISE EMPTY JSON>,
-      "created_at": <STORED UTC DATETIME FOR CREATED ENTRY>
-    }
-  }
-  ```
+Create or update request body:
 
-#### c. Update an Existing Entry
-- **PUT** `/api/posts/{id}/`
-- **Request Body**
-  ```
-  {
-    "content": "Updated text for journal entry",
-    "formatting": <USER INPUT (OPTIONAL JSON)>
-  }
-  ```
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
+```json
+{
+  "content": "Journal entry text",
+  "formatting": []
+}
+```
 
-  <UPDATED POST WITHOUT NEW EMOTION SCORES, EXAMPLE BELOW>
-  {
-    "message": "Successfully updated post {id}. Check back in a minute for emotional score.",
-    "post": {
-      ...
-      "content": "Updated text for journal entry.",
-      "formatting": <USER INPUT, OTHERWISE EMPTY JSON>,
-      "created_at": <STORED NEW UTC DATETIME FOR UPDATED ENTRY>
-    }
-  }
-  ```
+`content` is required. `formatting` is optional and defaults to an empty list. Create and update responses return the saved entry before new emotion scores are available.
 
-#### d. Retrieve All Entries
-- **GET** `/api/posts/`
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
-  {
-    "message": "Successfully retrieved <NUMBER OF ENTRIES> posts by user <ID>.",
-    "posts": [
-      <JOURNAL ENTRY>,
-      <JOURNAL ENTRY>
-    ]
-  }
-  ```
+### Weekly Advice
 
-### III. Weekly Advice
-#### a. Retrieve Latest Weekly Advice
-- **GET** `/api/advices/latest/`
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/advices/latest/` | Get the authenticated user's advice for the current week. |
 
-  <STORED WEEKLY ADVICE, EXAMPLE BELOW FROM SUNDAY, JAN 12TH, 2025>
-  {
-    "message": "Successfully retrieved latest advice for week of 2025-01-06.",
-    "user_id": <STORED USER ID FOR WEEKLY ADVICE>,
-    "content": {
-      "riddle": "I can lift your spirits high, yet too much can make you sigh. I am the thrill of success, 
-                but without rest, I can cause distress. What am I?",
-      "answer": "Balance",
-      "advice": "As you move into the upcoming week, remember to find balance in your efforts and rest. 
-                Celebrate your achievements, but also take time to recharge."
-    },
-    "created_at": "2025-01-06T13:37:29.534964+00:00",
-    "week_of": "2025-01-06"
-  }
-  ```
+Example advice content:
 
-### IV. Profile Picture
-#### a. Retrieve Latest Profile Picture
-- **GET** `/api/pfp/`
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
+```json
+{
+  "riddle": "I rise when you pause, and fade when you rush. What am I?",
+  "answer": "Calm",
+  "advice": "Give yourself room to slow down next week before taking on more."
+}
+```
 
-  {
-    "message": "Successfully retrieved profile picture.",
-    "link": <S3 BUCKET LINK>
-  }
-  ```
+### Profile Picture
 
-#### b. Upload a Profile Picture
-- **POST** `/api/pfp/`
-- **Request (Form-Data)**
-  - **Key:** `ImageFile`  
-  - **Value:** (Binary image data, allowed types: `.png`, `.jpg`, `.jpeg`)
-- **Response**
-  ```
-  <HTTP STATUS CODE 201>
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/pfp/` | Get the authenticated user's profile picture URL. |
+| `POST` | `/api/pfp/` | Upload or replace the authenticated user's profile picture. |
+| `DELETE` | `/api/pfp/` | Delete the authenticated user's profile picture. |
 
-  {
-    "message": "Successfully uploaded profile picture.",
-    "link": <S3 BUCKET LINK>
-  }
-  ```
+Profile picture uploads use form data:
 
-#### c. Delete the Profile Picture
-- **DELETE** `/api/pfp/`
-- **Response**
-  ```
-  <HTTP STATUS CODE 200>
+```text
+ImageFile=<png, jpg, or jpeg file>
+```
 
-  {
-    "message": "Successfully deleted profile picture.",
-    "link": <S3 BUCKET LINK>
-  }
-  ```
+## Running Locally
+
+The repository includes a Docker Compose setup for the backend services.
+
+1. Create a `.env` file with the required values listed below.
+2. Start the stack:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. Send API requests through Nginx:
+
+   ```text
+   http://localhost/
+   ```
+
+RabbitMQ's management UI is available at `http://localhost:15672` when the stack is running.
+
+Database migrations are supported through Flask-Migrate, but this repository does not include a committed migrations folder.
+
+## Environment Variables
+
+The app reads configuration from a `.env` file when running through Docker Compose.
+
+| Category | Variable | Purpose |
+| --- | --- | --- |
+| Flask | `SECRET_KEY` | Flask application secret key. |
+| Firebase | `FIREBASE_CREDENTIAL` | Firebase service account JSON used to verify ID tokens. |
+| PostgreSQL | `DATABASE_URL` | SQLAlchemy database connection string. |
+| PostgreSQL | `POSTGRES_DB` | Database name used by the Postgres container. |
+| PostgreSQL | `POSTGRES_USER` | Database user used by the Postgres container. |
+| PostgreSQL | `POSTGRES_PASSWORD` | Database password used by the Postgres container. |
+| RabbitMQ | `RABBITMQ_USER` | RabbitMQ user for the broker container. |
+| RabbitMQ | `RABBITMQ_PASSWORD` | RabbitMQ password for the broker container. |
+| Celery | `RABBITMQ_BROKER_URL` | Broker URL used by Celery to enqueue tasks. |
+| Celery | `RABBITMQ_RESULT_BACKEND` | Celery result backend URL. |
+| OpenAI | `OPENAI_API_KEY` | API key for weekly advice generation. |
+| Hugging Face | `HUGGING_FACE_API_TOKEN` | API token for emotion scoring. |
+| Hugging Face | `EMOTION_SCORE_API_URL` | Hugging Face model endpoint for emotion classification. |
+| AWS S3 | `AWS_REGION` | AWS region for the S3 bucket. |
+| AWS S3 | `AWS_ACCESS_KEY_ID` | AWS access key for profile picture uploads. |
+| AWS S3 | `AWS_SECRET_ACCESS_KEY` | AWS secret key for profile picture uploads. |
+| AWS S3 | `S3_PROFILE_PIC_BUCKET` | S3 bucket name for profile pictures. |
+| AWS S3 | `S3_PROFILE_PIC_BUCKET_URL` | Public base URL for uploaded profile pictures. |
+
+`FIREBASE_CREDENTIAL` should be stored as a single-line JSON string in `.env`.
+
+## Project Structure
+
+```text
+app/
+  main/                  Flask routes and JSON error handlers
+  models/                SQLAlchemy models and Marshmallow schemas
+  celery_worker/         Celery task definitions and task logic
+  utils/                 Authentication, time, advice, and exception helpers
+  config.py              Environment-based configuration
+  extensions.py          Database, migration, schema, and S3 setup
+celery_factory.py        Celery application factory
+docker-compose.yml       Local service orchestration
+Dockerfile.web           Flask/Gunicorn image
+Dockerfile.celery        Celery worker and scheduler image
+nginx/nginx.conf         Reverse proxy configuration
+run.py                   Flask and Celery entry point
+```
