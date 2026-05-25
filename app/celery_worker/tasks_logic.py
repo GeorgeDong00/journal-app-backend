@@ -26,23 +26,6 @@ SUPPORTED_EMOTIONS = {
 # --------------------------------------------------
 # Advice Generation
 # --------------------------------------------------
-def verify_no_latest_advice(user_id, start_of_week):
-    """Verify latest advice generation has not occur yet for the user.
-
-    Args:
-        user_id (int): User ID to check for latest advice generation.
-        of_week (datetime): Date of the latest Monday.
-
-    Raises:
-        UserAdviceException: If existing advice has a "of_week" field that matches the latest Monday.
-    """
-    current_week_advice = WeeklyAdvice.query.filter(WeeklyAdvice.user_id == user_id,
-                                                    WeeklyAdvice.of_week == start_of_week).first()
-    if current_week_advice:
-        logger.warning(f"User {user_id} already has advice for week of {start_of_week}.")
-        raise UserAdviceException(f"Advice already generated for week of {start_of_week}.")
-
-
 def retrieve_user_latest_posts(user_id, start_of_week):
     """Retrieves a week worth of posts from the user.
 
@@ -122,7 +105,6 @@ def generate_weekly_advice_for_user(user):
     try:
         # Verify the user has not generated any advice for this week.
         user_id, of_week = user.id, latest_monday()
-        verify_no_latest_advice(user_id, of_week)
 
         # Retrieves the entries user has posted during this week.
         posts = retrieve_user_latest_posts(user_id, of_week)
